@@ -1,0 +1,157 @@
+--- a/src/OPOWER.cpp
++++ b/src/OPOWER.cpp
+@@ -40,6 +40,10 @@
+ #include <OWALLRES.h>
+ #include <OSERES.h>
+ #include <OREMOTE.h>
++#ifdef __ANDROID__
++#include <OGRPSEL.h>
++#include <sk_game.h>
++#endif
+ 
+ //-------------- Define constant -----------------//
+ 
+@@ -2316,3 +2320,120 @@
+ }
+ //---------- End of function Power::select_active_unit --------//
+ //#### end alex 19/3 ####//
++
++
++#ifdef __ANDROID__
++//-------- Begin of function sk_game_tap_is_command --------//
++//
++// Android touch layer (port/android/sk_touch.cpp): decides whether a tap at logical point (lx,ly) should be sent as a
++// RIGHT click (an order for the selected units) or a LEFT click (select).
++//
++// It reuses the game's own hover-cursor logic, exactly as Power::mouse_handler() does for the mouse cursor:
++// test_detect() -> find_pointing_type() -> choose_cursor(). The cursor shapes that mean "a right click here orders the
++// selection" are the ones Power::detect_action() acts on:
++//   CURSOR_UNIT      walk (empty ground / site)                         -> unit_array.move_to
++//   CURSOR_UNIT_O    enemy unit/town/firm under the cursor              -> unit_array.attack / move_to
++//   CURSOR_ASSIGN    firm/town to station in, ship or vehicle to board  -> unit_array.assign / assign_to_ship / assign_to_camp
++//   CURSOR_DESTRUCT  wall under the cursor                              -> detect_action falls through to move_to
++// CURSOR_UNIT_C (own unit/town/firm with no assignment possible) means "select it", so it counts as NOT a command.
++// CURSOR_TRIGGER_EXPLODE is shown for an own explosive cart, but detect_action only acts on it with Shift held, so
++// without a keyboard a right click there would just team-select: not a command.
++// Only own units (single or group) count as a selection that can be ordered; a pending command_id (build, settle,
++// burn, caravan stop ...) is placed with a LEFT click (Power::detect_frame), so it is never a command here.
++//
++int sk_game_tap_is_command(int lx, int ly)
++{
++	if( sys.sys_flag != SYS_RUN || sys.view_mode != MODE_NORMAL )
++		return 0;
++
++	if( !power.enable_flag || power.win_opened || Box::opened_flag || sys.signal_exit_flag )		// same gate as mouse_handler()
++		return 0;
++
++	if( !nation_array.player_recno || power.command_id )
++		return 0;
++
++	if( lx < ZOOM_X1 || lx > ZOOM_X2 || ly < ZOOM_Y1 || ly > ZOOM_Y2 )
++		return 0;
++
++	short selectedRecno = 0;
++	ScreenObjectType selectedType = power.find_selected_type(&selectedRecno);
++
++	if( selectedType != SCREEN_OBJECT_FRIEND_UNIT && selectedType != SCREEN_OBJECT_UNIT_GROUP )
++		return 0;
++
++	if( unit_array.is_deleted(selectedRecno) )
++		return 0;
++
++	short pointingRecno = 0;
++	ScreenObjectType pointingType = SCREEN_OBJECT_NONE;
++	Location *pointingLoc = power.test_detect(lx, ly);
++
++	if( pointingLoc )
++		pointingType = power.find_pointing_type(pointingLoc, &pointingRecno);
++
++	switch( power.choose_cursor(lx, ly, selectedType, selectedRecno, pointingType, pointingRecno) )
++	{
++		case CURSOR_UNIT:
++		case CURSOR_UNIT_O:
++		case CURSOR_ASSIGN:
++		case CURSOR_DESTRUCT:
++			return 1;
++	}
++
++	return 0;
++}
++//--------- End of function sk_game_tap_is_command ---------//
++
++
++//-------- Begin of function sk_game_request / sk_game_run_pending --------//
++//
++// One queued selection action from the toolbar (deselect, select group n, assign selection to group n). It is run from
++// Sys::detect_view so the game's own redraw (info.disp) happens where it normally happens, not inside the SDL event
++// pump. A request that cannot run (a menu is open) is dropped after half a second.
++//
++static int sk_pending_action = 0;
++static int sk_pending_arg = 0;
++static unsigned long sk_pending_time = 0;
++
++void sk_game_request(int action, int arg)
++{
++	sk_pending_action = action;
++	sk_pending_arg = arg;
++	sk_pending_time = misc.get_time();
++}
++
++void sk_game_run_pending()
++{
++	if( !sk_pending_action )
++		return;
++
++	int action = sk_pending_action;
++	int arg = sk_pending_arg;
++	sk_pending_action = 0;
++
++	if( misc.get_time() - sk_pending_time > 500 )
++		return;
++
++	if( sys.sys_flag != SYS_RUN || !nation_array.player_recno )
++		return;
++
++	switch( action )
++	{
++		case SK_ACT_DESELECT:
++			power.reset_selection();		// the game's own "select nothing" (also clears a pending command)
++			info.disp();
++			break;
++
++		case SK_ACT_GROUP_SELECT:
++			if( arg >= 1 && arg <= MAX_SELECT_GROUP_NUM )
++				group_select.select_grouped_units(arg);
++			break;
++
++		case SK_ACT_GROUP_ASSIGN:
++			if( arg >= 1 && arg <= MAX_SELECT_GROUP_NUM )
++				group_select.group_units(arg);
++			break;
++	}
++}
++//--------- End of function sk_game_request / sk_game_run_pending ---------//
++#endif
+--- a/src/OSYS2.cpp
++++ b/src/OSYS2.cpp
+@@ -64,6 +64,9 @@
+ #include <OINGMENU.h>
+ #include <CmdLine.h>
+ #include <gettext.h>
++#ifdef __ANDROID__
++#include <sk_game.h>
++#endif
+ 
+ 
+ //---------- define static variables ----------//
+@@ -802,6 +805,10 @@
+ 	int enableAction;			// some action is not enabled, when paused.
+ 	enableAction = config.frame_speed > 0 || !remote.is_enable();	// allow action when paused in single player
+ 
++#ifdef __ANDROID__
++	sk_game_run_pending();		// toolbar: deselect / select group / assign group, run where the game redraws its info panel
++#endif
++
+ 	if( enableAction )
+ 		info.detect();
+ 
