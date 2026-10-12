@@ -47,7 +47,7 @@ no tests, report format) except where this file overrides it.
 | Compiler | Add `-Wno-c++11-narrowing` for game sources only (HD's runtime initialisers in braced lists). Do not add it to `port/` |
 | Touch | `sk_touch.cpp` `GAME_W/GAME_H` (800x600) become the runtime `VGA_WIDTH/VGA_HEIGHT`; everything derived from them follows |
 | Toolbar | With no side margin the existing collapsible-strip mode applies; move its handle from (0,0) (it covers the game's top-left menu buttons) into the new top-bar filler area, right of the date text and left of the map-mode buttons |
-| Cheats panel | With no side margin it uses its existing overlay mode, as a panel sliding in from the left edge over the map; it must not cover the right-hand info panel |
+| Cheats panel | With no side margin it uses its existing overlay mode, as a panel on the left edge over the map (shown/hidden without animation, as built in W4); it must not cover the right-hand info panel |
 | Side-by-side build | Gradle property `-PsideBySide` (passed by `scripts/build.sh ... --side-by-side`): `applicationIdSuffix ".hd"`, label "Seven Kingdoms HD". Default build unchanged (`com.sevenkfans.sevenkingdoms`) |
 | Saves | No save-format change. HD's camera clamps (`OMATRIX.cpp`, `OWORLD_Z.cpp`) handle loading an 800x600 save into a wider view |
 

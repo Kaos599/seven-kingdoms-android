@@ -77,6 +77,13 @@ months; save manually before closing the app if you want to keep your exact posi
 - Runs fullscreen with the system bars hidden (swipe from an edge to show them briefly).
 - Long-press the app icon and choose **Licences** to read the game and music licences.
 
+## Widescreen (experimental, `feature/widescreen`)
+
+A branch in progress makes the in-game view fill wide phones. The map and panel render at a wide logical size
+picked from the screen (for example 1344x610 on a 2712x1220 phone); menus stay 4:3 and centred. The branch is
+unreleased and has **not been run on a device yet**. The code is adapted from kresimirv/7kaa_HD (GPL v2).
+Details, patch list and the on-device test checklist are in [docs/widescreen/README.md](docs/widescreen/README.md).
+
 ## Building from source
 
 | Tool | Version |
@@ -126,6 +133,7 @@ of the upstream code, and `docs/CONTRACT.md` is the build specification the port
 - **Music** © 1997 Bjørn Lynne and Enlight Software Ltd. It is not GPL. Its notice allows free
   redistribution for use with Seven Kingdoms, provided the set is complete and unmodified, the authors are
   credited and the notice is kept. The APK ships all 10 tracks unmodified with `COPYING-Music.txt`.
+- **Widescreen code** (`feature/widescreen`) is adapted from [kresimirv/7kaa_HD](https://github.com/kresimirv/7kaa_HD) (GPL v2).
 - **Libraries:** [SDL 2](https://www.libsdl.org/) (zlib), [openal-soft](https://openal-soft.org/)
   (LGPL-2.0, dynamically linked), [enet](http://enet.bespin.org/) (MIT). Versions and checksums are in
   `third_party/VERSIONS.md`.
