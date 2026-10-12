@@ -1,0 +1,438 @@
+--- a/src/OGAMEMP.cpp
++++ b/src/OGAMEMP.cpp
+@@ -56,6 +56,7 @@
+ #include <ConfigAdv.h>
+ #ifdef __ANDROID__
+ #include <sk_text.h>
++#include <sk_net.h>
+ #endif
+ #include <OGF_REC.h>
+ 
+@@ -115,7 +116,25 @@
+ static void disp_virtual_tick(ButtonCustom *, int);
+ static void disp_scroll_bar_func(SlideVBar *scroll, int);
+ 
++#ifdef __ANDROID__
++// Draw this phone's address(es) ("Your address: 192.168.1.23") in a small panel, so a host can tell a friend what
++// to type under "Enter Address". x1..y2 are in 800x600 page coordinates (the page is centred at VGA_X1/VGA_Y1).
++// Drawn straight into the front buffer, after the page has been blitted.
++static void sk_disp_address(int x1, int y1, int x2, int y2)
++{
++	x1 += VGA_X1; x2 += VGA_X1;
++	y1 += VGA_Y1; y2 += VGA_Y1;
+ 
++	char useBack = vga.use_back_buf;
++	vga.use_front();
++	vga_front.d3_panel_up(x1, y1, x2, y2, 2, 1);
++	font_san.center_put(x1+4, y1+2, x2-4, y2-2, sk_net_address_line());
++	if( useBack )
++		vga.use_back();
++}
++#endif
++
++
+ enum
+ {
+ 	MPMSG_START_GAME = 0x1f5a0001,
+@@ -666,6 +685,17 @@
+ 			else if (service_mode == 2)
+ 			{
+ 				// Join by direct IP address
++#ifdef __ANDROID__
++				sk_net_last_address(join_address, sizeof(join_address));		// last address joined this run, else empty
++				if (!lobbied &&
++				    input_box(_("Enter the game's address:"), join_address, 100))
++				{
++					if (mp_obj.init_lobbied(MAX_NATION, join_address))
++						choice = 1;
++					else
++						box.msg(_("Unable to find that address"));
++				}
++#else
+ 				strcpy(join_address, "localhost");
+ 				if (!lobbied &&
+ 				    input_box(_("Enter the game's address:"), join_address, 100) &&
+@@ -673,6 +703,7 @@
+ 				{
+ 					choice = 1;
+ 				}
++#endif
+ 			}
+ 			else
+ 			{
+@@ -707,6 +738,10 @@
+ 				return;
+ 			}
+ 
++#ifdef __ANDROID__
++			if (service_mode == 2 && !lobbied)
++				sk_net_remember_address(join_address);		// default of the Enter Address box next time
++#endif
+ 			remote.init(&mp_obj);
+ 			remote.connect_game();
+ 		}
+@@ -932,6 +967,17 @@
+ 			else if (service_mode == 2)
+ 			{
+ 				// Join by direct IP address
++#ifdef __ANDROID__
++				sk_net_last_address(join_address, sizeof(join_address));		// last address joined this run, else empty
++				if (!lobbied &&
++				    input_box(_("Enter the game's address:"), join_address, 100))
++				{
++					if (mp_obj.init_lobbied(gamePlayerCount, join_address))
++						choice = 1;
++					else
++						box.msg(_("Unable to find that address"));
++				}
++#else
+ 				strcpy(join_address, "localhost");
+ 				if (!lobbied &&
+ 				    input_box(_("Enter the game's address:"), join_address, 100) &&
+@@ -939,6 +985,7 @@
+ 				{
+ 					choice = 1;
+ 				}
++#endif
+ 			}
+ 			else
+ 			{
+@@ -979,6 +1026,10 @@
+ 				if (!nation_array.is_deleted(nationRecno) && !nation_array[nationRecno]->is_ai())
+ 					++gamePlayerCount;
+ 
++#ifdef __ANDROID__
++			if (service_mode == 2 && !lobbied)
++				sk_net_remember_address(join_address);		// default of the Enter Address box next time
++#endif
+ 			remote.init(&mp_obj);
+ 			remote.connect_game();
+ 		}
+@@ -1102,6 +1153,9 @@
+ 	}
+ 
+ 	int buttonCount = b;
++#ifdef __ANDROID__
++	buttonCount = BUTTON_NUM - 1;		// no libcurl: hide the 7kfans.com service button (the last one)
++#endif
+ 	int choice = 0;
+ 
+ 	vga_front.unlock_buf();
+@@ -1146,6 +1200,9 @@
+ 				vga_util.blt_buf(0, 0, vga_back.buf_width()-1, vga_back.buf_height()-1, 0);
+ 
+ 				returnButton.paint();
++#ifdef __ANDROID__
++				sk_disp_address(190, 300, 610, 340);
++#endif
+ 				for( b = 0; b < buttonCount; ++b )
+ 				{
+ 					int y = buttonY[b]+DESC_TOP_MARGIN;
+@@ -1343,7 +1400,11 @@
+ 				image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15,
+ 					sub_game_mode == 0 ? (char*)"TOP-NMPG" : (char*)"TOP-LMPG" );
+ 				int b = 0;
++#ifdef __ANDROID__
++				for( b = 0; b < BUTTON_NUM - 1; ++b )		// no libcurl: no 7kfans.com service entry
++#else
+ 				for( b = 0; b < BUTTON_NUM; ++b )
++#endif
+ 				{
+ 					int y = buttonY[b]+DESC_TOP_MARGIN;
+ 					// write service name to back buffer
+@@ -1368,6 +1429,9 @@
+ 				if( joinButton.enable_flag )
+ 					joinButton.paint();
+ 				returnButton.paint();
++#ifdef __ANDROID__
++				sk_disp_address(190, 300, 610, 340);
++#endif
+ 			}
+ 
+ 			if( refreshFlag & SMOPTION_GETA_ALL )
+@@ -1791,12 +1855,23 @@
+ 	enum { JOIN_BUTTON_X = 320, JOIN_BUTTON_Y = 538 };
+ 	enum { CANCEL_BUTTON_X = 520, CANCEL_BUTTON_Y = 538 };
+ 
++#ifdef __ANDROID__
++	// The 800x600 page is centred on the (wider) Android screen: shift the list rows by the page origin,
++	// as the scroll bar and the buttons already are.
++	const int SESSION_BUTTON_X1 = MUPG_X1 + 30, SESSION_BUTTON_Y1 = MUPG_Y1 + 160;
++	enum { SESSION_BUTTON_Y_SPACING = 44, MAX_BUTTON = 8 };
++	const int SESSION_BUTTON_X2 = MUPG_X1 + 754,
++		SESSION_DESC_Y1 = SESSION_BUTTON_Y1+14,
++		SESSION_DESC_X1 = SESSION_BUTTON_X1 + 14, SESSION_DESC_X2 = SESSION_BUTTON_X2,
++		SESSION_BUTTON_Y2 = SESSION_BUTTON_Y1 + MAX_BUTTON * SESSION_BUTTON_Y_SPACING-1;
++#else
+ 	enum { SESSION_BUTTON_X1 = 30, SESSION_BUTTON_Y1 = 160 };
+ 	enum { SESSION_BUTTON_Y_SPACING = 44, MAX_BUTTON = 8 };
+ 	enum { SESSION_BUTTON_X2 = 754,
+ 		SESSION_DESC_Y1 = SESSION_BUTTON_Y1+14,
+ 		SESSION_DESC_X1 = SESSION_BUTTON_X1 + 14, SESSION_DESC_X2 = SESSION_BUTTON_X2,
+ 		SESSION_BUTTON_Y2 = SESSION_BUTTON_Y1 + MAX_BUTTON * SESSION_BUTTON_Y_SPACING-1};
++#endif
+ 
+ 	enum { SCROLL_X1=757, SCROLL_Y1 = 176, SCROLL_X2 = 770, SCROLL_Y2 = 493 };
+ 
+@@ -1890,6 +1965,9 @@
+ 				}
+ 				joinButton.paint();
+ 				cancelButton.paint();
++#ifdef __ANDROID__
++				sk_disp_address(260, 114, 750, 142);
++#endif
+ 			}
+ 
+ 			if( refreshFlag & SSOPTION_POLL_SESSION )
+@@ -3017,6 +3095,9 @@
+ 					startButton.paint();
+ 				readyButton.paint();
+ 				returnButton.paint();
++#ifdef __ANDROID__
++				sk_disp_address(150, 520, 650, 537);
++#endif
+ 			}
+ 
+ 			refreshFlag = 0;
+@@ -4940,6 +5021,9 @@
+ 					startButton.paint();
+ 				readyButton.paint();
+ 				returnButton.paint();
++#ifdef __ANDROID__
++				sk_disp_address(150, 520, 650, 537);
++#endif
+ 			}
+ 
+ 			refreshFlag = 0;
+--- a/src/ONEWS2.cpp
++++ b/src/ONEWS2.cpp
+@@ -30,6 +30,9 @@
+ #include <OSPY.h>
+ #include <OUNIT.h>
+ #include <ONEWS.h>
++#ifdef __ANDROID__
++#include <OREMOTE.h>
++#endif
+ 
+ 
+ //------ Begin of function NewsArray::diplomacy -----//
+@@ -1214,8 +1217,41 @@
+ 	}
+ }
+ //------- End of function NewsArray::add_news -----//
++
++
++#ifdef __ANDROID__
++//------ Begin of function NewsArray::sk_notice -----//
++//
++// Android port: show a one-off notice in the news ticker. Multiplayer only. SK_NOTICE_MATCH_START (called
++// when a match starts) also re-arms the once-per-match desync notice.
++//
++// <int> noticeId - SK_NOTICE_MATCH_START or SK_NOTICE_DESYNC
++//
++void NewsArray::sk_notice(int noticeId)
++{
++	static char desyncShown = 0;
++
++	if( !remote.is_enable() )
++		return;
+ 
++	if( noticeId == SK_NOTICE_MATCH_START )
++		desyncShown = 0;
++	else if( noticeId == SK_NOTICE_DESYNC )
++	{
++		if( desyncShown )
++			return;
++		desyncShown = 1;
++	}
+ 
++	News* newsPtr = add_news( NEWS_SK_NOTICE, NEWS_NORMAL, 0, 0, 1 );
++
++	if( newsPtr )
++		newsPtr->short_para1 = noticeId;
++}
++//------- End of function NewsArray::sk_notice -----//
++#endif
++
++
+ //------ Begin of function News::set_loc ------//
+ //
+ void News::set_loc(int xLoc, int yLoc, int locType, int locTypePara, int locTypePara2)
+--- a/src/ONEWSENG.cpp
++++ b/src/ONEWSENG.cpp
+@@ -92,6 +92,9 @@
+ 	{ &News::firm_constructed, 0 },
+ 	{ &News::unit_trained, 0 },
+ 	{ &News::weapon_ship_built, 0 },
++#ifdef __ANDROID__
++	{ &News::sk_notice, 1 },
++#endif
+ };
+ 
+ //------- Define static variables --------//
+@@ -1716,6 +1719,24 @@
+ //------- End of function News::multi_save_game -----//
+ 
+ 
++#ifdef __ANDROID__
++//------ Begin of function News::sk_notice -----//
++//
++// Android port: one-off notices in a multiplayer match (NewsArray::sk_notice).
++//
++// short_para1 - SK_NOTICE_MATCH_START or SK_NOTICE_DESYNC
++//
++void News::sk_notice()
++{
++	if( short_para1 == SK_NOTICE_MATCH_START )
++		str = "Keep the app open: leaving it for more than a minute hands your kingdom to the computer.";
++	else
++		str = "Games out of sync: this match may play differently on each phone.";
++}
++//------- End of function News::sk_notice -----//
++#endif
++
++
+ //------ Begin of function News::multi_connection_lost -----//
+ //
+ // This function is called when a human player's connection has been lost.
+--- a/src/OREMOTEM.cpp
++++ b/src/OREMOTEM.cpp
+@@ -464,6 +464,9 @@
+ 			if( (remote.sync_test_level & 1) && (remote.sync_test_level >= 0) )
+ 			{
+ 				remote.sync_test_level = ~1;	// signal error encountered
++#ifdef __ANDROID__
++				news_array.sk_notice(SK_NOTICE_DESYNC);
++#endif
+ 				if( sys.debug_session )
+ 					err.run( _("Multiplayer Random Seed Sync Error") );
+ 			}
+@@ -2922,6 +2925,9 @@
+ 		&& crc_store.compare_frame(data_buf) )
+ 	{
+ 		remote.sync_test_level = ~2;	// signal error encountered
++#ifdef __ANDROID__
++		news_array.sk_notice(SK_NOTICE_DESYNC);
++#endif
+ 	}
+ }
+ //------- End of function RemoteMsg::compare_remote_crc -------//
+--- a/src/OSYS.cpp
++++ b/src/OSYS.cpp
+@@ -734,6 +734,10 @@
+    remote.enable_poll_msg();
+    remote.enable_process_queue();
+    remote_send_success_flag = 1;
++
++#ifdef __ANDROID__
++   news_array.sk_notice(SK_NOTICE_MATCH_START);      // multiplayer only (checks remote.is_enable())
++#endif
+ 
+ #ifdef DEBUG_LONG_LOG
+    char longLogSuffix = 'A';
+--- a/src/enet/multiplayer.cpp
++++ b/src/enet/multiplayer.cpp
+@@ -28,6 +28,9 @@
+ #include <string.h>
+ #include <stdint.h>
+ #include <dbglog.h>
++#ifdef __ANDROID__
++#include <sk_net.h>
++#endif
+ 
+ DBGLOG_DEFAULT_CHANNEL(MultiPlayer);
+ 
+@@ -120,8 +123,21 @@
+ 	recv_buffer_size = MP_RECV_BUFFER_SIZE;
+ 
+ 	init_flag = 1;
++#ifdef __ANDROID__
++	sk_net_multicast_acquire();	// receive the LAN session broadcast only while multiplayer is initialised
++#endif
++#endif
++}
++
++#ifdef __ANDROID__
++void MultiPlayer::flush()
++{
++#ifdef USE_ENET
++	if (init_flag && host)
++		enet_host_flush(host);
+ #endif
+ }
++#endif
+ 
+ void MultiPlayer::deinit()
+ {
+@@ -132,6 +148,9 @@
+ 
+ 	init_flag = 0;
+ 	lobbied_flag = 0;
++#ifdef __ANDROID__
++	sk_net_multicast_release();
++#endif
+ 
+ 	current_sessions.zap();
+ 
+@@ -1351,6 +1370,11 @@
+ 	case ENET_EVENT_TYPE_CONNECT:
+ 		if (sysMsgCount)
+ 			*sysMsgCount = 1;
++#ifdef __ANDROID__
++		// Phones are switched away from for short whiles (the main thread blocks in the background): give a silent
++		// peer 60 s before ENet drops it (default 5-30 s), see docs/multiplayer/README.md.
++		enet_peer_timeout(event.peer, 32, 60000, 60000);
++#endif
+ 		MSG("ENET_EVENT_TYPE_CONNECT connectedPeers=%d\n", host->connectedPeers);
+ 
+ 		if (!player) {
+--- a/include/multiplayer.h
++++ b/include/multiplayer.h
+@@ -185,6 +185,9 @@
+ 	void   init(ProtocolType);
+ 	void   deinit();
+ 	bool   is_initialized() const { return init_flag != 0; }
++#ifdef __ANDROID__
++	void   flush();   // send everything ENet has queued (used before the app goes to the background)
++#endif
+ 
+ 	// ------- functions on lobby -------- //
+ 	int    init_lobbied(int maxPlayers, char * cmdLine);
+--- a/include/ONEWS.h
++++ b/include/ONEWS.h
+@@ -93,8 +93,15 @@
+ 		 NEWS_FIRM_CONSTRUCTED,
+ 		 NEWS_UNIT_TRAINED,
+ 		 NEWS_WEAPON_SHIP_BUILT,
++#ifdef __ANDROID__
++		 NEWS_SK_NOTICE,			// Android port: short_para1 = SK_NOTICE_???
++#endif
+ 	  };
+ 
++#ifdef __ANDROID__
++enum { SK_NOTICE_MATCH_START=1, SK_NOTICE_DESYNC };
++#endif
++
+ //------- Define struct News ---------//
+ 
+ struct NewsGF;
+@@ -185,6 +192,9 @@
+ 	void  firm_constructed();
+ 	void  unit_trained();
+ 	void  weapon_ship_built();
++#ifdef __ANDROID__
++	void  sk_notice();
++#endif
+ 
+ 	void  write_record(NewsGF *r);
+ 	void  read_record(NewsGF *r);
+@@ -269,6 +279,9 @@
+ 	void  firm_constructed(int firmRecno);
+ 	void  unit_trained(int unitRecno, int townRecno);
+ 	void  weapon_ship_built(int unitRecno, int townRecno);
++#ifdef __ANDROID__
++	void  sk_notice(int noticeId);
++#endif
+ 
+ 	//--------------------------------------------//
+ 

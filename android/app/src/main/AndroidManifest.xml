@@ -17,6 +17,12 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- LAN multiplayer (UDP 19255 game, 19383 session broadcast). All install-time permissions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
