@@ -13,3 +13,18 @@ Archives are kept in `third_party/_downloads/` (git-ignored). Extracted trees si
 Notes:
 - SDL2 was chosen as the latest release-2.x.y tag from the GitHub API listing (2.32.10 is the highest 2.x tag; SDL3 excluded).
 - The 7kaa source tarball also bundles its own copies of enet, openal, curl and imgfun under `7kaa/src/`. These are the versions shipped with 7kaa 2.15.7, not the upstream tags above.
+
+## 7kaa_HD (widescreen source; not an archive, not fetched by `fetch-deps.sh`)
+
+Not in the table above because it is not downloaded as an archive. Its diff is vendored as `patches/hd/0001-7kaa_hd-cf1cedb.patch`
+and applied by `scripts/apply-patches.sh` before `patches/7kaa/*`.
+
+| Field | Value |
+|---|---|
+| Component | 7kaa_HD, widescreen fork of Seven Kingdoms (kresimirv) |
+| Source URL | https://github.com/kresimirv/7kaa_HD |
+| Commit | `cf1cedb` (`git diff 3f229fd cf1cedb -- src include`, 63 files, +1164/-779) |
+| Base | `3f229fd` = upstream 2.15.8 |
+| Licence | GPL v2, inherited from upstream `COPYING` (the repo has no SPDX tag) |
+| Applied as | `patches/hd/0001-7kaa_hd-cf1cedb.patch` onto 2.15.7 (`-p1`, 0 fuzz, 0 rejects) |
+| Not used | `I_IF_3840_2160.RES` (HD's 11.6 MB art file) is not packaged; top-bar art comes from `I_IF.RES` |

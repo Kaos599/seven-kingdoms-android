@@ -1,16 +1,16 @@
 --- a/src/OVGA.cpp
 +++ b/src/OVGA.cpp
-@@ -30,6 +30,9 @@
- #include <version.h>
+@@ -31,6 +31,9 @@
  #include <FilePath.h>
  #include <ConfigAdv.h>
+ #include <OCONFIG.h>
 +#ifdef __ANDROID__
 +#include <sk_touch.h>
 +#endif
  
  DBGLOG_DEFAULT_CHANNEL(Vga);
  
-@@ -85,6 +88,9 @@
+@@ -86,6 +89,9 @@
     mouse_mode = MOUSE_INPUT_ABS;
     boundary_set = 0;
  
@@ -20,7 +20,7 @@
     if (SDL_Init(SDL_INIT_VIDEO))
        return 0;
  
-@@ -363,8 +369,15 @@
+@@ -364,8 +370,15 @@
  {
     SDL_Event event;
  
@@ -36,7 +36,7 @@
        switch (event.type)
        {
        case SDL_QUIT:
-@@ -823,6 +836,9 @@
+@@ -824,6 +837,9 @@
        SDL_UpdateTexture(texture, NULL, target->pixels, target->pitch);
        SDL_RenderClear(renderer);
        SDL_RenderCopy(renderer, texture, NULL, NULL);
