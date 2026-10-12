@@ -11,9 +11,9 @@
  * Gestures (CONTRACT 5 phase 2):
  *   tap                   left click at the finger
  *   hold >= 400 ms        right click at the finger (growing ring while holding)
- *   one-finger drag       left-button drag (box select)
+ *   one-finger drag       on the main map: pan the camera (sk_camera.cpp), fling on release; elsewhere: left-button drag
  *   two-finger tap        right click at the midpoint
- *   two-finger drag       scroll the map (Mouse::process_scroll -> World::detect_scroll)
+ *   two fingers on map    pinch zoom about the midpoint + pan (camera); elsewhere: scroll in whole cells
  *   Back                  Esc (closes the cheats panel first when it is open)
  *   "C" toolbar button    opens/closes the cheats panel (sk_cheats.cpp)
  */
@@ -25,6 +25,7 @@
 #include <OCONFIG.h>
 #include "sk_touch.h"
 #include "sk_cheats.h"
+#include "sk_camera.h"
 
 // ---------------------------------------------------------------------------------------------
 // Tunables
@@ -34,6 +35,8 @@ static const float  TOUCH_SLOP_LOGICAL  = 12.0f; // max movement for a tap/long-
 static const Uint32 TWO_TAP_MAX_MS      = 350;   // two-finger tap must be shorter than this
 static const Uint32 BUTTON_HOLD_MS      = 60;    // injected click: press-to-release delay (lets polled button state see it)
 static const float  SCROLL_PX_PER_CELL  = 32.0f; // map cell size in the zoom window (ZOOM_LOC_WIDTH/HEIGHT)
+static const Uint32 FLING_SAMPLE_MS     = 100;   // finger velocity = movement over the last this-many ms
+static const float  FLING_MIN_SPEED_FRAC = 0.25f; // release speed (screen heights per second) below which no fling starts
 
 static const float  TOOLBAR_MIN_MARGIN_FRAC = 0.09f; // side bar needs a margin at least this fraction of screen height
 static const float  TOOLBAR_BUTTON_FRAC = 0.15f;     // button size, fraction of screen height (side bar)
@@ -60,7 +63,7 @@ static const float WIDE_PANEL_MAP_FRAC = 1.0f / 3.0f; // cheats panel width as a
 // ---------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------
-enum Mode { M_IDLE, M_PENDING, M_DRAG, M_LONG, M_TWO, M_WAIT_UP, M_BUTTON };
+enum Mode { M_IDLE, M_PENDING, M_DRAG, M_LONG, M_TWO, M_WAIT_UP, M_BUTTON, M_PAN };
 
 struct Finger
 {
@@ -79,6 +82,15 @@ static Uint32 g_t0 = 0;             // gesture start time
 static bool   g_two_moved = false;
 static float  g_two_last_mx = 0, g_two_last_my = 0; // last midpoint used for scrolling
 static float  g_scroll_acc_x = 0, g_scroll_acc_y = 0;
+static bool   g_two_cam = false;    // the two-finger gesture drives the camera (started on the map)
+static float  g_two_last_dist = 0;  // finger spread at the last camera update
+static bool   g_pan_start_map = false; // the single finger went down inside the map rectangle (camera pan on drag)
+static float  g_pan_last_x = 0, g_pan_last_y = 0;
+
+struct Sample { Uint32 t; float x, y; };
+static const int N_SAMPLES = 8;
+static Sample g_samples[N_SAMPLES];  // recent finger positions for the fling velocity (ring buffer)
+static int    g_sample_n = 0;
 
 static bool   g_release_pending = false;
 static Uint32 g_release_at = 0;
@@ -314,6 +326,59 @@ static void fire_item(int i)
 	}
 }
 
+// Output px -> game px for a click. Inside the map rectangle while the camera is active the inverse camera mapping
+// applies (exact inverse of what sk_camera_present drew); everywhere else it is the plain letterbox mapping.
+static bool to_game(const Geometry &g, float px, float py, int *lx, int *ly)
+{
+	if (sk_camera_to_game(px, py, lx, ly))
+		return true;
+	return to_logical(g, px, py, lx, ly);
+}
+
+static bool in_map_rect(float px, float py)
+{
+	SkCamView v;
+	sk_camera_get_view(&v);
+	return v.enabled && px >= v.map_dst.x && px < v.map_dst.x + v.map_dst.w &&
+		py >= v.map_dst.y && py < v.map_dst.y + v.map_dst.h;
+}
+
+static void sample_reset(void)
+{
+	g_sample_n = 0;
+}
+
+static void sample_add(Uint32 t, float x, float y)
+{
+	g_samples[g_sample_n % N_SAMPLES] = Sample{ t, x, y };
+	g_sample_n++;
+}
+
+// Finger velocity (output px/s) over the last FLING_SAMPLE_MS before `now`. Returns false if too little data.
+static bool sample_velocity(Uint32 now, float *vx, float *vy)
+{
+	int n = g_sample_n < N_SAMPLES ? g_sample_n : N_SAMPLES;
+	if (n < 2)
+		return false;
+	const Sample &last = g_samples[(g_sample_n - 1) % N_SAMPLES];
+	if ((Sint32)(now - last.t) > (Sint32)FLING_SAMPLE_MS)
+		return false;   // finger rested before lifting
+	const Sample *first = &last;
+	for (int i = 2; i <= n; i++)
+	{
+		const Sample &s = g_samples[(g_sample_n - i) % N_SAMPLES];
+		if ((Sint32)(last.t - s.t) > (Sint32)FLING_SAMPLE_MS)
+			break;
+		first = &s;
+	}
+	Uint32 dt = last.t - first->t;
+	if (dt < 8)
+		return false;
+	*vx = (last.x - first->x) * 1000.0f / dt;
+	*vy = (last.y - first->y) * 1000.0f / dt;
+	return true;
+}
+
 static void move_cursor(int lx, int ly)
 {
 	mouse.process_mouse_motion(lx, ly);
@@ -341,7 +406,7 @@ static void click_at(const Geometry &g, float px, float py, bool right)
 {
 	flush_release();
 	int lx, ly;
-	to_logical(g, px, py, &lx, &ly);
+	to_game(g, px, py, &lx, &ly);
 	move_cursor(lx, ly);
 	mouse.add_event(right ? RIGHT_BUTTON : LEFT_BUTTON);
 	schedule_release(right ? RIGHT_BUTTON_RELEASE : LEFT_BUTTON_RELEASE);
@@ -372,6 +437,10 @@ static void reset_state(void)
 	g_mode = M_IDLE;
 	g_game_fingers = 0;
 	g_scroll_acc_x = g_scroll_acc_y = 0;
+	g_two_cam = false;
+	g_pan_start_map = false;
+	sample_reset();
+	sk_camera_stop_fling();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -503,6 +572,7 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 	//---------------------------------------------------------------- finger down
 	if (e->type == SDL_FINGERDOWN)
 	{
+		sk_camera_stop_fling();   // a new touch stops a fling
 		int hit = toolbar_hit(g, px, py);
 		if (hit != -1)
 		{
@@ -526,9 +596,12 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 			g_game_fingers = 1;
 			g_mode = M_PENDING;
 			g_t0 = now;
+			g_pan_start_map = in_map_rect(px, py);   // a drag from here pans the camera
+			sample_reset();
 		}
-		else if (g_mode == M_PENDING && g_game_fingers == 1)
+		else if ((g_mode == M_PENDING || g_mode == M_PAN) && g_game_fingers == 1)
 		{
+			bool was_pan = g_mode == M_PAN;
 			g_f[1] = Finger{ id, px, py, px, py };
 			g_game_fingers = 2;
 			g_mode = M_TWO;
@@ -537,6 +610,11 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 			g_two_last_mx = (g_f[0].x + px) / 2;
 			g_two_last_my = (g_f[0].y + py) / 2;
 			g_scroll_acc_x = g_scroll_acc_y = 0;
+			// Two fingers that start on the map drive the camera (pinch + pan); a pan in progress joins in at once.
+			g_two_cam = in_map_rect(g_two_last_mx, g_two_last_my) && (was_pan || g_pan_start_map);
+			g_two_last_dist = hypotf(px - g_f[0].x, py - g_f[0].y);
+			if (was_pan && g_two_cam)
+				g_two_moved = true;
 		}
 		// else: third finger, or a finger during a drag/long-press: ignored
 		return 1;
@@ -556,7 +634,18 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 		case M_PENDING:
 		{
 			float dx = px - f->x0, dy = py - f->y0;
-			if (dx * dx + dy * dy >= slop * slop)
+			if (dx * dx + dy * dy >= slop * slop && g_pan_start_map)
+			{
+				// Drag that started on the main map: pan the camera (box-select returns with U2's long-press-drag).
+				g_mode = M_PAN;
+				sample_reset();
+				sample_add(e->tfinger.timestamp, f->x0, f->y0);
+				sample_add(e->tfinger.timestamp, px, py);
+				sk_camera_transform(f->x0, f->y0, px, py, 1.0f);   // include the distance travelled before the slop
+				g_pan_last_x = px;
+				g_pan_last_y = py;
+			}
+			else if (dx * dx + dy * dy >= slop * slop)
 			{
 				// Drag: press at the start point, then follow the finger.
 				int lx, ly;
@@ -577,6 +666,12 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 			move_cursor(lx, ly);
 			break;
 		}
+		case M_PAN:
+			sk_camera_transform(g_pan_last_x, g_pan_last_y, px, py, 1.0f);
+			g_pan_last_x = px;
+			g_pan_last_y = py;
+			sample_add(e->tfinger.timestamp, px, py);
+			break;
 		case M_TWO:
 		{
 			float mx = (g_f[0].x + g_f[1].x) / 2, my = (g_f[0].y + g_f[1].y) / 2;
@@ -587,14 +682,27 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 				float d1x = g_f[1].x - g_f[1].x0, d1y = g_f[1].y - g_f[1].y0;
 				float dm = (mx - sx) * (mx - sx) + (my - sy) * (my - sy);
 				float lim = slop * slop;
-				if (d0x * d0x + d0y * d0y >= lim || d1x * d1x + d1y * d1y >= lim || dm >= lim)
+				float dist0 = hypotf(g_f[1].x0 - g_f[0].x0, g_f[1].y0 - g_f[0].y0);
+				float dist = hypotf(g_f[1].x - g_f[0].x, g_f[1].y - g_f[0].y);
+				float spread = dist - dist0;
+				if (d0x * d0x + d0y * d0y >= lim || d1x * d1x + d1y * d1y >= lim || dm >= lim || (g_two_cam && spread * spread >= lim))
 				{
 					g_two_moved = true;
 					g_two_last_mx = sx;   // include the distance travelled before crossing the slop
 					g_two_last_my = sy;
+					g_two_last_dist = dist0;
 				}
 			}
-			if (g_two_moved)
+			if (g_two_moved && g_two_cam)
+			{
+				float dist = hypotf(g_f[1].x - g_f[0].x, g_f[1].y - g_f[0].y);
+				float ratio = (g_two_last_dist > 1.0f && dist > 1.0f) ? dist / g_two_last_dist : 1.0f;
+				sk_camera_transform(g_two_last_mx, g_two_last_my, mx, my, ratio);
+				g_two_last_mx = mx;
+				g_two_last_my = my;
+				g_two_last_dist = dist;
+			}
+			else if (g_two_moved)
 			{
 				// Content follows the fingers: fingers right => view moves left => negative scroll.
 				g_scroll_acc_x -= (mx - g_two_last_mx) / g.scale / SCROLL_PX_PER_CELL;
@@ -638,6 +746,16 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 		g_game_fingers = 0;
 		break;
 	}
+	case M_PAN:
+	{
+		float vx, vy;
+		if (sample_velocity(e->tfinger.timestamp, &vx, &vy) && sqrtf(vx * vx + vy * vy) >= g.out_h * FLING_MIN_SPEED_FRAC)
+			sk_camera_fling(vx, vy);
+		g_mode = M_IDLE;
+		g_game_fingers = 0;
+		g_pan_start_map = false;
+		break;
+	}
 	case M_LONG:   // the right click already fired
 		g_mode = M_IDLE;
 		g_game_fingers = 0;
@@ -646,6 +764,7 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 		if (!g_two_moved && (Sint32)(now - g_t0) < (Sint32)TWO_TAP_MAX_MS)
 			click_at(g, (g_f[0].x0 + g_f[1].x0) / 2, (g_f[0].y0 + g_f[1].y0) / 2, true);
 		g_scroll_acc_x = g_scroll_acc_y = 0;
+		g_two_cam = false;
 		// Wait for the other finger so its lift or later motion does not start a new gesture.
 		g_game_fingers = 1;
 		g_f[0] = (f == &g_f[0]) ? g_f[1] : g_f[0];
