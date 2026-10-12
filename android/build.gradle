@@ -1,0 +1,17 @@
+// Top-level build file. AGP 8.11 supports compileSdk 36 and runs on JDK 21 with Gradle 8.14.
+buildscript {
+    repositories {
+        mavenCentral()
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.11.0'
+    }
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+        google()
+    }
+}

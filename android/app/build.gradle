@@ -1,0 +1,99 @@
+apply plugin: 'com.android.application'
+
+// Directory filled by scripts/build.sh (game data + music + manifest.txt + data_version.txt).
+def stagedAssets = file("${rootDir}/../build/assets")
+
+// Release signing (CONTRACT 3.7): the keystore and its passwords live outside the repo.
+// scripts/build.sh release creates both if missing. Nothing secret is read from the repo.
+def releaseKeystore = new File(System.getProperty("user.home"), ".android/7kaa-release.jks")
+def releaseProps = new File(System.getProperty("user.home"), ".android/7kaa-release.properties")
+def releaseCreds = new Properties()
+if (releaseProps.exists()) {
+    releaseProps.withInputStream { releaseCreds.load(it) }
+}
+
+android {
+    namespace "com.sevenkfans.sevenkingdoms"
+    compileSdk 36
+    buildToolsVersion "36.0.0"
+    ndkVersion "27.1.12297006"
+
+    defaultConfig {
+        applicationId "com.sevenkfans.sevenkingdoms"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "2.15.7-android1"
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static",
+                          "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"  // 16 KB page-size devices
+                abiFilters 'arm64-v8a'
+            }
+        }
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "${rootDir}/../port/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (releaseProps.exists()) {
+                storeFile releaseKeystore
+                storeType "pkcs12"
+                storePassword releaseCreds.getProperty("storePassword")
+                keyAlias releaseCreds.getProperty("keyAlias")
+                keyPassword releaseCreds.getProperty("keyPassword")
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main {
+            // SDL's Java half must match the SDL native version exactly: use the pinned upstream copy.
+            java.srcDirs += ["${rootDir}/../third_party/SDL2/android-project/app/src/main/java"]
+            assets.srcDirs = [stagedAssets]
+        }
+    }
+
+    buildTypes {
+        release {
+            // SDL finds its Java entry points through JNI reflection; R8 would strip or rename them.
+            minifyEnabled false
+            if (releaseProps.exists()) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+// Fail fast rather than producing an unsigned "release" APK (no silent fallbacks, CONTRACT 3.5).
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name == "assembleRelease" } && !releaseProps.exists()) {
+        throw new GradleException("Release signing: ${releaseProps} is missing. Run scripts/build.sh release, which creates it.")
+    }
+    if (graph.allTasks.any { it.name == "assembleRelease" } && releaseProps.exists()) {
+        ["storePassword", "keyAlias", "keyPassword"].each { k ->
+            if (!releaseCreds.getProperty(k)) {
+                throw new GradleException("Release signing: key '${k}' missing from ${releaseProps}.")
+            }
+        }
+    }
+}
