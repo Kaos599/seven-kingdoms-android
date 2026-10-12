@@ -105,7 +105,7 @@ scripts/build.sh               # debug APK  -> android/app/build/outputs/apk/deb
 scripts/build.sh release       # signed APK -> android/app/build/outputs/apk/release/app-release.apk
 ```
 
-`build.sh` copies the pristine game source to `build/`, applies `patches/7kaa/*.patch`, stages the game
+`build.sh` copies the pristine game source to `build/`, applies `patches/7kaa/*.patch` (and `patches/sdl/*.patch` to a copy of SDL's Java half), stages the game
 data and music as APK assets, and runs Gradle. Upstream sources under `third_party/` are never edited.
 
 Release signing uses a keystore kept outside the repository (`~/.android/7kaa-release.jks` plus
@@ -126,6 +126,7 @@ with a different key cannot update an installed copy.
 | `patches/7kaa/0009` | Phone keyboard for the game's text fields (`port/android/sk_text.cpp`) |
 | `patches/7kaa/0010` | Map camera: drag to pan, pinch to zoom, minimap box (`port/android/sk_camera.cpp`) |
 | `patches/7kaa/0011` | Smart tap (asks the game's own cursor logic whether a tap is an order), toolbar group and deselect actions |
+| `patches/sdl/0001` | Soft-keyboard Backspace on Android 10+ (Gboard): the IME buffer starts empty while the game field is pre-filled, so delete and DEL key events are forwarded to the game as backspaces (`SDLInputConnection`) |
 | `port/CMakeLists.txt` | Builds SDL2, openal-soft (OpenSL ES backend), enet and the game as `libmain.so` |
 | `android/` | Gradle project, activity (fullscreen, keep screen on), Licences screen |
 
