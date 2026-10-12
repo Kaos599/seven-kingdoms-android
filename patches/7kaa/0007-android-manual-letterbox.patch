@@ -1,0 +1,43 @@
+--- a/src/OVGA.cpp	2026-10-12 17:23:11
++++ b/src/OVGA.cpp	2026-10-12 17:23:11
+@@ -122,8 +122,13 @@
+ 
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+    SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
++#ifndef __ANDROID__
+    if( config_adv.vga_keep_aspect_ratio )
+       SDL_RenderSetLogicalSize(renderer, VGA_WIDTH, VGA_HEIGHT);
++#endif
++   // Android: no SDL logical size. SDL rewrites SDL_FINGER* x/y relative to the logical viewport and
++   // clamps touches outside it, which breaks both the finger->game mapping and the margin toolbar.
++   // flip() letterboxes by hand and sk_touch maps raw window-normalised finger coordinates.
+ 
+    SDL_WarpMouseGlobal(mouse_x, mouse_y); // warp to initialize mouse by event queue
+ 
+@@ -839,7 +844,26 @@
+       SDL_BlitSurface(vga_front.surface, NULL, target, NULL);
+       SDL_UpdateTexture(texture, NULL, target->pixels, target->pitch);
+       SDL_RenderClear(renderer);
++#ifdef __ANDROID__
++      {
++         int ow = 0, oh = 0;
++         SDL_GetRendererOutputSize(renderer, &ow, &oh);
++         SDL_Rect dst;
++         if( ow > 0 && oh > 0 )
++         {
++            float sc = MIN((float)ow / VGA_WIDTH, (float)oh / VGA_HEIGHT);
++            dst.w = (int)(VGA_WIDTH * sc + 0.5f);
++            dst.h = (int)(VGA_HEIGHT * sc + 0.5f);
++            dst.x = (ow - dst.w) / 2;
++            dst.y = (oh - dst.h) / 2;
++            SDL_RenderCopy(renderer, texture, NULL, &dst);
++         }
++         else
++            SDL_RenderCopy(renderer, texture, NULL, NULL);
++      }
++#else
+       SDL_RenderCopy(renderer, texture, NULL, NULL);
++#endif
+ #ifdef __ANDROID__
+       sk_touch_draw(renderer);	// hotkey toolbar + long-press ring, over the frame
+ #endif

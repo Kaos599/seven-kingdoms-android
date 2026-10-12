@@ -1,0 +1,27 @@
+--- a/src/OMOUSECR.cpp	2026-10-12 17:21:05
++++ b/src/OMOUSECR.cpp	2026-10-12 17:21:05
+@@ -299,8 +299,13 @@
+ 
+ 	//------- save screen and put cursor -------//
+ 
++#ifdef __ANDROID__
++	// touch UI: never draw the hand sprite; cur_x/cur_y and the box-select frame stay live
++	if( 1 )
++#else
+ 	if( hide_all_flag || ( hide_area_flag &&
+ 		 is_touch( hide_x1, hide_y1, hide_x2, hide_y2 ) ) )
++#endif
+ 	{
+ 		cursor_shown = 0;
+ 	}
+@@ -449,6 +454,10 @@
+ 
+ 	//----- display mouse cursor on the back buffer ----//
+ 
++#ifdef __ANDROID__
++	return;		// touch UI: no hand sprite on the back buffer either
++#endif
++
+ 	if( is_touch(bltX1, bltY1, bltX2, bltY2) )
+ 	{
+ 		//--- save the front buffer area which will be overwritten ---//
