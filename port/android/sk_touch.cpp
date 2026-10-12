@@ -14,7 +14,8 @@
  *   one-finger drag       left-button drag (box select)
  *   two-finger tap        right click at the midpoint
  *   two-finger drag       scroll the map (Mouse::process_scroll -> World::detect_scroll)
- *   Back                  Esc
+ *   Back                  Esc (closes the cheats panel first when it is open)
+ *   "C" toolbar button    opens/closes the cheats panel (sk_cheats.cpp)
  */
 #ifdef __ANDROID__
 
@@ -23,6 +24,7 @@
 #include <OMOUSE.h>
 #include <OCONFIG.h>
 #include "sk_touch.h"
+#include "sk_cheats.h"
 
 // ---------------------------------------------------------------------------------------------
 // Tunables
@@ -124,19 +126,32 @@ static bool to_logical(const Geometry &g, float px, float py, int *lx, int *ly)
 	return inside;
 }
 
+// Geometry the cheats panel needs (it lives in the left letterbox margin, or overlays the game).
+static SkCheatsView cheats_view(const Geometry &g)
+{
+	SkCheatsView v;
+	v.out_w = g.out_w;
+	v.out_h = g.out_h;
+	v.game_x = g.gx;
+	v.game_w = g.gw;
+	int b = (int)(g.out_h * STRIP_BUTTON_FRAC);
+	v.strip_h = b + b / 8;   // overlay mode stays clear of the collapsible strip row
+	return v;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Toolbar items
 // ---------------------------------------------------------------------------------------------
-enum Glyph { G_PAUSE, G_SLOWER, G_FASTER, G_K, G_G, G_D };
-enum { ITEM_COUNT = 6, ITEM_HANDLE = -2 };
+enum Glyph { G_PAUSE, G_SLOWER, G_FASTER, G_K, G_G, G_D, G_C };
+enum { ITEM_COUNT = 7, ITEM_HANDLE = -2 };
 
 struct Item { Glyph glyph; };
 
 // Hotkeys with no mouse equivalent (docs/AUDIT.md E4, OSYS.cpp detect_set_speed / detect_letter_key):
 //   pause = Space, slower/faster = digit keys 1..9 (speed 3*n), K/G/D = jump to king / general,
-//   open oldest diplomatic message.
+//   open oldest diplomatic message, C = cheats panel (Android-only, sk_cheats.cpp).
 static const Item ITEMS[ITEM_COUNT] = {
-	{ G_PAUSE }, { G_SLOWER }, { G_FASTER }, { G_K }, { G_G }, { G_D },
+	{ G_PAUSE }, { G_SLOWER }, { G_FASTER }, { G_K }, { G_G }, { G_D }, { G_C },
 };
 
 // Item rectangles for the current geometry; returns the number of visible items (0 if hidden).
@@ -231,6 +246,7 @@ static void fire_item(int i)
 	case G_K:      push_key(SDLK_k); break;
 	case G_G:      push_key(SDLK_g); break;
 	case G_D:      push_key(SDLK_d); break;
+	case G_C:      sk_cheats_toggle(); break;
 	}
 }
 
@@ -307,6 +323,7 @@ void sk_touch_init(void)
 
 void sk_touch_update(void)
 {
+	sk_cheats_update(g_window);
 	SDL_ShowCursor(SDL_DISABLE);   // the game re-enables the system cursor on focus loss; touch has none
 	Uint32 now = SDL_GetTicks();
 	if (g_release_pending && (Sint32)(now - g_release_at) >= 0)
@@ -336,7 +353,10 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 		{
 			if (e->type == SDL_KEYDOWN && !e->key.repeat)
 			{
-				push_key(SDLK_ESCAPE);
+				if (sk_cheats_is_open())
+					sk_cheats_close();   // Back closes the panel instead of sending Esc
+				else
+					push_key(SDLK_ESCAPE);
 			}
 			return 1;
 		}
@@ -346,6 +366,7 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 		if (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST || e->window.event == SDL_WINDOWEVENT_MINIMIZED)
 		{
 			reset_state();
+			sk_cheats_reset_touch();
 		}
 		return 0;
 
@@ -369,6 +390,14 @@ int sk_touch_handle_event(const SDL_Event *e, SDL_Window *window, SDL_Renderer *
 	SDL_FingerID id = e->tfinger.fingerId;
 	Uint32 now = SDL_GetTicks();
 	float slop = TOUCH_SLOP_LOGICAL * g.scale;
+
+	//---------------------------------------------------------------- cheats panel (never reaches the game)
+	{
+		SkCheatsView cv = cheats_view(g);
+		int type = e->type == SDL_FINGERDOWN ? 0 : (e->type == SDL_FINGERMOTION ? 1 : 2);
+		if (sk_cheats_touch(&cv, type, id, px, py))
+			return 1;
+	}
 
 	//---------------------------------------------------------------- toolbar finger
 	if (g_mode == M_BUTTON)
@@ -569,6 +598,7 @@ static const Uint8 COL_GLYPH[4]   = { 245, 240, 215, 240 };
 static const Uint8 FONT_K[7] = { 0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11 };
 static const Uint8 FONT_G[7] = { 0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0F };
 static const Uint8 FONT_D[7] = { 0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E };
+static const Uint8 FONT_C[7] = { 0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E };
 
 static void set_col(SDL_Renderer *r, const Uint8 *c, int alpha_scale = 255)
 {
@@ -636,6 +666,7 @@ static void draw_glyph(SDL_Renderer *r, const Rect &b, Glyph gl)
 	case G_K: draw_letter(r, b, FONT_K); break;
 	case G_G: draw_letter(r, b, FONT_G); break;
 	case G_D: draw_letter(r, b, FONT_D); break;
+	case G_C: draw_letter(r, b, FONT_C); break;
 	}
 }
 
@@ -682,7 +713,7 @@ static void draw_toolbar(SDL_Renderer *r, const Geometry &g)
 	}
 	for (int i = 0; i < n; i++)
 	{
-		bool down = (g_mode == M_BUTTON && g_btn_finger_hit == i);
+		bool down = (g_mode == M_BUTTON && g_btn_finger_hit == i) || (ITEMS[i].glyph == G_C && sk_cheats_is_open());
 		set_col(r, down ? COL_BTN_DOWN : COL_BTN);
 		fill(r, items[i].x, items[i].y, items[i].w, items[i].h);
 		set_col(r, COL_EDGE);
@@ -746,6 +777,8 @@ void sk_touch_draw(SDL_Renderer *r)
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 
 	draw_toolbar(r, g);
+	SkCheatsView cv = cheats_view(g);
+	sk_cheats_draw(r, &cv);
 	draw_feedback(r, g);
 
 	SDL_SetRenderDrawBlendMode(r, obm);
