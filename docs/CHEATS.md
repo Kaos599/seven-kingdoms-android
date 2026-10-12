@@ -36,18 +36,46 @@ All are plain keys (no Shift), handled in `Sys::detect_cheat_key` (`OSYS.cpp:186
 | Combat level +20 | Selected unit, capped at 100 | `[` | `OSYS.cpp:1958-1966` |
 | Skill level +20 | Selected unit's skill, capped at 100 | `]` | `OSYS.cpp:1969-1978` |
 | Spy skill +20 | Selected unit's spying skill, capped at 100 | `'` | `OSYS.cpp:1981-1993` |
+| *Panel only:* REPUTATION +10 / -10 | Player nation's reputation +10 / -10, clamped to -100..100 (same as scenario key `r` / `e`) | (none, direct call) | copied from `OSYS.cpp:2270-2288`; patch 0008 `sk_cheats_reputation` |
+| *Panel only:* RACE POP +10 / -10 | +10 / -10 people of the race browsed in the selected own town (same as scenario key `w` / `q`) | (none, direct call) | copied from `OSYS.cpp:2230-2268`, race from `OTOWNIF.cpp:2242`; patch 0008 `sk_cheats_race_pop` |
+| *Panel only:* HEAL ALL | Every living unit of the player's nation to its maximum hit points; every player firm not under construction likewise | (none, direct call) | units: `OUNIT.cpp:952-953` (king refill) + `OSYS.cpp:1939-1945` (firm key); patch 0008 `sk_cheats_heal_all` |
 
 Selection-based cheats (`;` `=` `-` `[` `]` `'`) do nothing when the right thing is not selected.
+
+The panel-only rows are not keys. They call new game-side functions in `patches/7kaa/0008-android-cheats.patch`
+directly, because the scenario keys (`r`, `e`, `w`, `q`) are only reachable with `DEBUG.SYS`/`TESTING.SYS`/`CHEAT.SYS`.
+Each one uses the same gate as the cheat keys (single player, human nation, cheat mode on; `sk_cheats_get_game_state`).
+
+**RACE POP vs TOWN POP.** `TOWN POP +10` (key `;`, `OSYS.cpp:1897-1915`) adds 10 people of a *random* race
+(`random_race()`), with no check of the race. `RACE POP +10 / -10` acts on one race: the race row selected in the
+town's own race list (`Town::get_selected_race`, `OTOWNIF.cpp:2242`, i.e. `browse_race`), not the town's majority
+race. It does nothing unless that race has people in the town. `-10` kills 10 people of that race (`kill_town_people`),
+as the scenario key `q` does. Results on the button: DONE, NO TOWN (no own town selected), NO RACE.
+
+**REPUTATION.** Changes `reputation` directly and clamps to -100..100, as the scenario keys do. It does not use
+`NationBase::change_reputation` (`ONATIONB.cpp:1031`), which the keys do not use either.
+
+**HEAL ALL.** Units: alive units of the player's nation (the filter of `sk_cheats_unit_cheat`, no selection test) get
+`hit_points = max_hit_points`. Firms: the player's firms get `hit_points = max_hit_points`, as `FIRM FULL HP` does for
+one firm. Exception: firms still under construction are skipped. The construction code completes a firm as soon as
+`hit_points >= max_hit_points` (`OFIRM.cpp:1437`), so refilling one would finish the building. The button flashes the
+number of units healed (firms are not counted).
 `config.king_undie_flag` and `config.fast_build` are reset at game start (`OBATTLE.cpp:181-182`) and saved in savegames (`OGF_REC.cpp:383,385`).
 
 ## Not covered
 
 Debug-only keys exist (`Sys::detect_debug_cheat_key`, `OSYS.cpp:2001-2164`, Ctrl+key; `detect_scenario_cheat_key`,
 `OSYS.cpp:2169-2542`) but only run when the data folder contains `DEBUG.SYS`, `TESTING.SYS` or `CHEAT.SYS`
-(`OSYS.cpp:207-215`, `1524-1531`). The normal game never reaches them, so the Android panel does not offer them.
+(`OSYS.cpp:207-215`, `1524-1531`). The normal game never reaches them, so the Android panel does not inject them. Four of the scenario keys (`r`, `e`,
+`w`, `q`) are copied into the panel as direct calls (see the REPUTATION and RACE POP rows above).
 
 ## Android panel mapping
 
 The "C" toolbar button opens `port/android/sk_cheats.cpp`. It injects the keys above as SDL key events (Shift is
 set through `SDL_SetModState`, because the game reads Shift from `SDL_GetModState()`). State read-back (in game?
 cheat flag, immortal king, fast build) comes from `sk_cheats_get_game_state()` in `patches/7kaa/0008-android-cheats.patch`.
+The rows marked *Panel only* (REPUTATION, RACE POP, HEAL ALL) and the multi-unit cheats are direct calls into
+`patches/7kaa/0008-android-cheats.patch` (`sk_cheats_reputation`, `sk_cheats_race_pop`, `sk_cheats_heal_all`,
+`sk_cheats_unit_cheat`); they do not inject keys. Layout: two button columns in the left margin, three in the wide panel
+and the overlay (the last button spans a short last row). Every button is at least 44 logical px tall in the wide
+layout at a 1220 px tall screen; that figure is a calculation from the layout code, not measured on a device.

@@ -1,0 +1,82 @@
+--- a/src/OGETA.cpp	2026-10-12 20:05:10
++++ b/src/OGETA.cpp	2026-10-12 20:05:30
+@@ -29,6 +29,9 @@
+ #include <KEY.h>
+ #include <OSYS.h>
+ #include <COLCODE.h>
++#ifdef __ANDROID__
++#include <sk_text.h>
++#endif
+ 
+ #define HIDE_CHAR '*'
+ 
+@@ -106,6 +109,10 @@
+ 	if( !enable_flag )
+ 		return 0;
+ 
++#ifdef __ANDROID__
++	sk_text_heartbeat();		// a field is being polled: keep the soft keyboard up
++#endif
++
+ 	err_when( cursor_pos < 0 || cursor_pos > strlen(input_field) );
+ 	err_when( mark_cursor_pos < 0 || mark_cursor_pos > strlen(input_field) );
+ 
+@@ -481,6 +488,12 @@
+ 	if( !mouse_drag_flag )
+ 	{
+ 		int clickCount = mouse.any_click(x-font_ptr->max_font_width, y, x_limit, y+height()-1);
++		if( clickCount >= 1 )
++		{
++#ifdef __ANDROID__
++			sk_text_request();	// tap on a text field: raise the soft keyboard
++#endif
++		}
+ 		if( clickCount == 1)
+ 		{
+ 			// set cursor_pos
+@@ -520,7 +533,13 @@
+ {
+ 	unsigned keyCode = detect_key();
+ 	if( keyCode )
++	{
++#ifdef __ANDROID__
++		if( keyCode == KEY_RETURN )
++			sk_text_done();		// soft keyboard Done/Enter on a stand-alone field: close the keyboard
++#endif
+ 		return keyCode;
++	}
+ 	else
+ 		return detect_click();
+ }
+--- a/src/OGAMEMP.cpp	2026-10-12 20:05:10
++++ b/src/OGAMEMP.cpp	2026-10-12 20:05:30
+@@ -54,6 +54,9 @@
+ #include "gettext.h"
+ #include <FilePath.h>
+ #include <ConfigAdv.h>
++#ifdef __ANDROID__
++#include <sk_text.h>
++#endif
+ #include <OGF_REC.h>
+ 
+ 
+@@ -1580,6 +1583,9 @@
+ 		       0,
+ 		       hide_input);
+ 
++#ifdef __ANDROID__
++	sk_text_request();		// dialog exists only to type into its field: raise the soft keyboard
++#endif
+ 	vga_front.unlock_buf();
+ 	while (1) {
+ 		vga_front.lock_buf();
+@@ -1716,6 +1722,9 @@
+ 
+ 	getGroup.set_focus(0,1);
+ 
++#ifdef __ANDROID__
++	sk_text_request();		// dialog exists only to type into its fields: raise the soft keyboard
++#endif
+ 	vga_front.unlock_buf();
+ 	while (1) {
+ 		vga_front.lock_buf();

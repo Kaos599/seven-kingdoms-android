@@ -1,0 +1,74 @@
+--- a/src/OCONFIG.cpp
++++ b/src/OCONFIG.cpp
+@@ -32,6 +32,9 @@
+ #include <FilePath.h>
+ #include <OGF_REC.h>
+ #include <ConfigAdv.h>
++#ifdef __ANDROID__
++#include <SDL.h>
++#endif
+ #include <OWORLD.h>
+ 
+ DBGLOG_DEFAULT_CHANNEL(Config);
+@@ -78,11 +81,46 @@
+ 	default_preference();
+ }
+ //--------- End of function Config::deinit --------//
++
++
++#ifdef __ANDROID__
++// Pick the logical resolution from the phone's screen: height 610, width = the largest multiple
++// of 32 not above screen_w/screen_h*610 (so the map view is a whole number of 32 px tiles and
++// zoom_width + 224 == width). Falls back to HD's 800x600 for narrow screens (<= 4:3) or if the
++// display size cannot be read. Runs from main() before sys.init(), i.e. before SDL_Init, so the
++// video subsystem is initialised here (reference counted; the later SDL_Init(SDL_INIT_VIDEO) in
++// Vga::init just bumps the count).
++static void android_choose_resolution()
++{
++	int w = 800, h = 600;
++	SDL_DisplayMode dm;
++
++	if( SDL_InitSubSystem(SDL_INIT_VIDEO) == 0 )
++	{
++		if( SDL_GetDesktopDisplayMode(0, &dm) == 0 && dm.w > 0 && dm.h > 0 )
++		{
++			long sw = dm.w > dm.h ? dm.w : dm.h;		// landscape: long edge is the width
++			long sh = dm.w > dm.h ? dm.h : dm.w;
++			int ww = (int) ((sw * 610 / sh) / 32 * 32);	// floor(sw*610/sh) then floor to x32
++			if( ww >= 800 && sw * 3 > sh * 4 )			// wider than 4:3
++			{
++				w = ww;
++				h = 610;
++			}
++		}
++	}
+ 
++	config_adv.vga_resolution_width = w;
++	config_adv.vga_resolution_height = h;
++}
++#endif
+ 
+ //--------- Begin of function Config::init_resolution -----------//
+ void Config::init_resolution()
+ {
++#ifdef __ANDROID__
++	android_choose_resolution();
++#endif
+ 	// get resolution from config file
+ 	win_width = config_adv.vga_resolution_width;
+ 	win_height = config_adv.vga_resolution_height;
+--- a/src/OSYS.cpp
++++ b/src/OSYS.cpp
+@@ -419,7 +419,12 @@
+    image_icon.init(DIR_RES"I_ICON.RES",1,0);       // 1-read into buffer
+ 
+    // determine correct resource file based on resolution
++#ifdef __ANDROID__
++    // never load the 3840x2160 art: Info::disp_panel builds the wide panel from the 800x600 MAINSCR
++    const char* filename = "I_IF.RES";
++#else
+     const char* filename = (config.win_width <= 800 && config.win_height <= 600) ? "I_IF.RES" : "I_IF_3840_2160.RES";
++#endif
+    char* pathpath = new char[100];
+    strcpy(pathpath, DIR_RES);
+    strcat(pathpath, filename);

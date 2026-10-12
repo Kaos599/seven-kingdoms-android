@@ -1,0 +1,51 @@
+--- a/org/libsdl/app/SDLActivity.java
++++ b/org/libsdl/app/SDLActivity.java
+@@ -1982,7 +1982,28 @@
+         if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
+             if (SDLActivity.onNativeSoftReturnKey()) {
+                 return true;
++            }
++        }
++
++        /*
++         * Android port: some IMEs (Gboard on Android 17) send Backspace as a KEYCODE_DEL key event.
++         * Consume it here and emit exactly one '\b'. The hidden buffer starts empty while the game
++         * field is pre-filled, so the buffer cannot be relied on to tell us a character was removed.
++         */
++        if (event.getKeyCode() == KeyEvent.KEYCODE_DEL) {
++            if (event.getAction() == KeyEvent.ACTION_DOWN) {
++                final Editable content = getEditable();
++                if (content != null) {
++                    int cursor = Selection.getSelectionStart(content);
++                    if (cursor > 0) {
++                        // Keep mCommittedText in step so updateText() does not emit a second '\b'.
++                        content.delete(cursor - 1, cursor);
++                        mCommittedText = content.toString();
++                    }
++                }
++                nativeGenerateScancodeForUnichar('\b');
+             }
++            return true;
+         }
+ 
+         return super.sendKeyEvent(event);
+@@ -2020,6 +2041,19 @@
+            }
+         }
+ 
++        if (beforeLength > 0) {
++            /*
++             * Android port: the hidden buffer starts empty while the game's field is pre-filled, so
++             * updateText() only sees deletions of text typed this session. Send a '\b' for every
++             * deleted character the buffer does not hold; updateText() covers the rest.
++             */
++            final Editable content = getEditable();
++            int avail = (content != null) ? Math.max(0, Selection.getSelectionStart(content)) : 0;
++            for (int i = Math.max(0, beforeLength - avail); i > 0; i--) {
++                nativeGenerateScancodeForUnichar('\b');
++            }
++        }
++
+         if (!super.deleteSurroundingText(beforeLength, afterLength)) {
+             return false;
+         }

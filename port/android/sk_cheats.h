@@ -27,12 +27,41 @@ struct SkCheatsGameState
 // Defined in the patched OSYS.cpp.
 void sk_cheats_get_game_state(SkCheatsGameState *st);
 
+// Applies COMBAT +20 (which=0), SKILL +20 (1) or SPY SKILL +20 (2) to every selected unit of the player's
+// nation, with the per-unit effect of Sys::detect_cheat_key. Returns the number of units changed (0 if the
+// game's cheat gates are not met). Defined in the patched OSYS.cpp (patches/7kaa/0008-android-cheats.patch).
+int sk_cheats_unit_cheat(int which);
+
+// Results of sk_cheats_race_pop (SK_CHEAT_NOOP = gates not met, nothing changed).
+enum SkCheatResult
+{
+	SK_CHEAT_NOOP    = 0,
+	SK_CHEAT_DONE    = 1,
+	SK_CHEAT_NO_TOWN = -1,   // no own town selected
+	SK_CHEAT_NO_RACE = -2,   // no race selected in the town, or that race has no people
+};
+
+// REPUTATION +10 (delta 10) / -10 (delta -10) for the player's nation: the scenario keys 'r' / 'e'
+// (OSYS.cpp:2270-2288). Returns 1 if applied, 0 if the gates are not met.
+// Defined in the patched OSYS.cpp (patches/7kaa/0008-android-cheats.patch).
+int sk_cheats_reputation(int delta);
+
+// RACE POP +10 (delta 10) / -10 (delta -10) for the race selected in the selected town: the scenario keys
+// 'w' / 'q' (OSYS.cpp:2230-2268). Returns a SkCheatResult. Defined in the patched OSYS.cpp.
+int sk_cheats_race_pop(int delta);
+
+// HEAL ALL: refills the hit points of every living unit of the player's nation, and of the player's firms
+// that are not under construction. Returns the number of units healed. Defined in the patched OSYS.cpp.
+int sk_cheats_heal_all(void);
+
 // Screen geometry the panel needs, in output pixels (filled by sk_touch).
 struct SkCheatsView
 {
 	int   out_w, out_h;   // renderer output size
 	float game_x, game_w; // letterboxed game rect (horizontal extent)
 	int   strip_h;        // height of the collapsible strip row (overlay mode keeps clear of it)
+	int   wide;           // wide logical size: panel is the rect below (output px), not margin/overlay
+	float wide_x, wide_y, wide_w, wide_h;
 };
 
 // Open / close the panel. Toggle is what the "C" toolbar button calls.

@@ -1,5 +1,7 @@
 package com.sevenkfans.sevenkingdoms;
 
+import android.content.Context;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -9,6 +11,11 @@ import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
 import org.libsdl.app.SDLActivity;
+
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Collections;
 
 /**
  * Thin SDLActivity subclass. The game itself is native (libmain.so, entry point SDL_main).
@@ -77,6 +84,70 @@ public class SevenKingdomsActivity extends SDLActivity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+
+    // ----- LAN multiplayer (called from native code, port/android/sk_net.cpp, on the SDL thread) -----
+
+    private static WifiManager.MulticastLock sMulticastLock;
+
+    /** Lets the phone receive the host's UDP broadcast (port 19383). Held only while the game's MultiPlayer object exists. */
+    public static synchronized void acquireMulticastLock() {
+        try {
+            if (sMulticastLock != null && sMulticastLock.isHeld()) {
+                return;
+            }
+            Context ctx = getContext();
+            if (ctx == null) {
+                return;
+            }
+            WifiManager wm = (WifiManager) ctx.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm == null) {
+                return;
+            }
+            if (sMulticastLock == null) {
+                sMulticastLock = wm.createMulticastLock("7kaa-lan");
+                sMulticastLock.setReferenceCounted(false);
+            }
+            sMulticastLock.acquire();
+        } catch (RuntimeException e) {
+            android.util.Log.w("7kaa", "multicast lock: " + e);
+        }
+    }
+
+    public static synchronized void releaseMulticastLock() {
+        try {
+            if (sMulticastLock != null && sMulticastLock.isHeld()) {
+                sMulticastLock.release();
+            }
+        } catch (RuntimeException e) {
+            android.util.Log.w("7kaa", "multicast lock release: " + e);
+        }
+    }
+
+    /** Fallback for the "Your address" line when getifaddrs returns nothing: non-loopback IPv4 addresses, comma separated. */
+    public static String getLocalIpv4Addresses() {
+        StringBuilder sb = new StringBuilder();
+        try {
+            for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (!ni.isUp() || ni.isLoopback()) {
+                    continue;
+                }
+                for (InetAddress a : Collections.list(ni.getInetAddresses())) {
+                    if (a instanceof Inet4Address && !a.isLoopbackAddress()) {
+                        String h = a.getHostAddress();
+                        if (h != null && sb.indexOf(h) < 0) {
+                            if (sb.length() > 0) {
+                                sb.append(", ");
+                            }
+                            sb.append(h);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("7kaa", "local addresses: " + e);
+        }
+        return sb.toString();
     }
 
     @Override

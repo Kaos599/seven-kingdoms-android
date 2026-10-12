@@ -23,6 +23,10 @@
  * LOWMEMORY, which are posted from the Java thread and merely queued) from the main thread, so the
  * handler can touch game state directly.
  *
+ * Multiplayer: the pause is networked by the game itself (see sk_net_flush in the background handler and
+ * docs/multiplayer/README.md); ENet peers get a 60 s timeout (patch 0012) so a short switch-away does not
+ * drop the match.
+ *
  * No autosave on background: Sys::auto_save only fires on a frame boundary on the first day of an even
  * month and game_file.save_game() runs save_process(), which is not safe from inside the event pump.
  * The game's own AUTO.SAV (every 2 game months, in the pref path) and the player's saves are relied on.
@@ -36,6 +40,7 @@
 #include <OSYS.h>
 #include <OCONFIG.h>
 #include "sk_lifecycle.h"
+#include "sk_net.h"
 
 #define LOG_TAG "7kaa"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -100,6 +105,9 @@ int sk_lifecycle_handle_event(const SDL_Event *event)
 			if (config.frame_speed)
 				sys.pause();
 			sys.user_pause_flag = 1;   // stays paused after returning, see header comment
+			// Multiplayer: Sys::pause() -> Sys::set_speed(0) broadcasts MSG_SET_SPEED (OSYS.cpp), so the other
+			// phones pause too. ENet only queues that packet; push it out before SDL blocks this thread.
+			sk_net_flush();
 		}
 		pause_audio();
 		return 1;

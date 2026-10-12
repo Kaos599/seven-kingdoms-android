@@ -1,0 +1,4397 @@
+diff --git a/include/ALL.h b/include/ALL.h
+index cf0208f..fc81432 100644
+--- a/include/ALL.h
++++ b/include/ALL.h
+@@ -31,6 +31,7 @@
+ #include <OFILE.h>
+ #include <GAMEDEF.h>
+ #include <OERROR.h>
++#include <OCONFIG.h>
+ 
+ 
+ //-------- Define macro functions -------//
+diff --git a/include/ConfigAdv.h b/include/ConfigAdv.h
+index 2656097..1233903 100644
+--- a/include/ConfigAdv.h
++++ b/include/ConfigAdv.h
+@@ -68,6 +68,10 @@ public:
+ 	// game file settings
+ 	char			game_file_patching;
+ 
++	// resolution settings
++	int			vga_resolution_width;
++	int			vga_resolution_height;
++
+ 	// locale settings
+ 	char			locale[LOCALE_LEN+1];
+ 
+diff --git a/include/IMGFUN.h b/include/IMGFUN.h
+index 09d840d..8857014 100644
+--- a/include/IMGFUN.h
++++ b/include/IMGFUN.h
+@@ -37,6 +37,7 @@ extern "C"
+ 
+ 	void IMGcall IMGblt(char*,int pitch,int,int,char*);
+ 	void IMGcall IMGblt2(char*,int pitch,int,int,int,int,char*);
++	void IMGcall IMGblt3(char*, int pitch, int height, int, int, int, int, char*);
+ 	void IMGcall IMGblt32x32(char*,int pitch,int,int,char*);
+ 	void IMGcall IMGbltDW(char*,int pitch,int,int,char*);
+ 	void IMGcall IMGbltTrans(char*,int pitch,int,int,char*);
+diff --git a/include/OCONFIG.h b/include/OCONFIG.h
+index 712b167..28d2acf 100644
+--- a/include/OCONFIG.h
++++ b/include/OCONFIG.h
+@@ -58,6 +58,7 @@ public:
+ 	void			init();
+ 	void			deinit();
+ 
++	void			init_resolution();
+ 	void			default_game_setting();
+ 	void			default_cheat_setting();
+ 	void			default_local_game_setting();
+@@ -235,6 +236,12 @@ public:
+ 	char			blacken_map;				// whether the map is blackened at the first place
+ 	char			explore_mask_method;		// 0 for none, 1 for masking, 2 for remapping
+ 	char			fog_mask_method;			// 1 for fast masking, 2 for slow remapping
++
++	//------------ resolution parameters -------------//
++	int		win_width;
++	int		win_height;
++	int		zoom_width;
++	int		zoom_height;
+ };
+ #pragma pack()
+ 
+diff --git a/include/OIMGRES.h b/include/OIMGRES.h
+index 099a37c..25573d5 100644
+--- a/include/OIMGRES.h
++++ b/include/OIMGRES.h
+@@ -48,9 +48,11 @@ public:
+ 
+ 	char* get_ptr(const char* imageName)   { return ResourceIdx::read(imageName); }
+ 
+-	void  put_large(VgaBuf*,int,int,char*);  // put a large image, over 64K
++	void  put_large(VgaBuf*,int,int,char*,int useStretch=0);  // put a large image, over 64K
+ 	void  put_large(VgaBuf*,int,int,int);
+ 
++	void  put_cropped_area(VgaBuf*, int desX, int desY, int desW, int desH, const char*, int srcX, int srcY, int srcW, int srcH);
++
+ 	void  put_to_buf(VgaBuf* vgaBufPtr, const char* imageName);
+ 	void  put_to_buf(VgaBuf* vgaBufPtr, int bitmapId);
+ };
+diff --git a/include/OINFO.h b/include/OINFO.h
+index d138fa5..820912e 100644
+--- a/include/OINFO.h
++++ b/include/OINFO.h
+@@ -38,16 +38,16 @@ enum { INFO_REPAINT=10, INFO_UPDATE, INFO_SPECIAL };
+ 
+ #define TOP_MENU_X1	 4
+ #define TOP_MENU_Y1   4
+-#define TOP_MENU_X2   (ZOOM_X2-4)
++#define TOP_MENU_X2   (VGA_WIDTH-4)
+ #define TOP_MENU_Y2	 30
+ 
+-#define INFO_X1 	586
++#define INFO_X1 	ZOOM_WIDTH+10
+ #define INFO_Y1   265
+-#define INFO_X2   790
+-#define INFO_Y2	589
++#define INFO_X2   ZOOM_WIDTH+10+204
++#define INFO_Y2	  589
+ 
+ #define MSG_X1		INFO_X1
+-#define MSG_Y1 	(INFO_Y2-29)
++#define MSG_Y1 		(INFO_Y2-29)
+ #define MSG_X2		INFO_X2
+ #define MSG_Y2		INFO_Y2
+ 
+diff --git a/include/OMISC.h b/include/OMISC.h
+index ecdcc26..6bce7d5 100644
+--- a/include/OMISC.h
++++ b/include/OMISC.h
+@@ -114,6 +114,7 @@ public:
+    void  change_file_ext(char*,const char*,const char*);
+    void  extract_file_name(char*,const char*);
+ 
++   void  put_text_scr(char*);
+ 	void  del_array_rec(void* arrayBody, int arraySize, int recSize, int delRecno);
+ 
+ 	void	cal_move_around_a_point(short num, short width, short height, int& xShift, int& yShift);
+diff --git a/include/OMOUSECR.h b/include/OMOUSECR.h
+index 84dc2e9..ed4354c 100644
+--- a/include/OMOUSECR.h
++++ b/include/OMOUSECR.h
+@@ -147,10 +147,11 @@ public:
+ 	int	frame_origin_x, frame_origin_y;
+ 	int	frame_border_x1, frame_border_y1, frame_border_x2, frame_border_y2;
+ 
+-	char  frame_top_save_scr[VGA_WIDTH+4];		// for saving the nation selection frame
+-	char  frame_bottom_save_scr[VGA_WIDTH+4];	// +4 is for the width & height info
+-	char  frame_left_save_scr[VGA_HEIGHT+4];
+-	char  frame_right_save_scr[VGA_HEIGHT+4];
++	//set size to 2000 to fix out of range access
++	char  frame_top_save_scr[2000 + 4];		// for saving the nation selection frame
++	char  frame_bottom_save_scr[2000 + 4];	// +4 is for the width & height info
++	char  frame_left_save_scr[2000 + 4];
++	char  frame_right_save_scr[2000 + 4];
+ 
+ 	//------- cursor bitmap resource --------//
+ 
+diff --git a/include/OSYS.h b/include/OSYS.h
+index 7197b06..eb7dd7c 100644
+--- a/include/OSYS.h
++++ b/include/OSYS.h
+@@ -29,7 +29,7 @@
+ 
+ //------ Define common data buffer size  ------//
+ 
+-enum { COMMON_DATA_BUF_SIZE = 64*1024 };			// keep a 64K common buffer for all temporary memory storage like reading files temporarily into memory
++enum { COMMON_DATA_BUF_SIZE = 1024*2048 };			// keep a 64K common buffer for all temporary memory storage like reading files temporarily into memory
+ 
+ //-------------- define constant ------------//
+ 
+@@ -224,6 +224,7 @@ private:
+ 	int		is_mp_sync( int *unreadyPlayerFlag );
+ 	void		auto_save();
+ 
++	void 		blt_next_frame();
+ 	void		disp_frames_per_second();
+ 
+ 	void		process_key(unsigned scanCode, unsigned skeyState);
+diff --git a/include/OTUTOR.h b/include/OTUTOR.h
+index a8c11d5..1c4fce5 100644
+--- a/include/OTUTOR.h
++++ b/include/OTUTOR.h
+@@ -59,7 +59,7 @@ struct TutorTextBlock
+ 	enum { BUTTON_CODE_LEN=8 };
+ 
+ 	const char* text_ptr;          // offset of the help text in the text buffer
+-	size_t text_len;               // length of the help text
++	short text_len;               // length of the help text
+ 
+ 	char	button_code[BUTTON_CODE_LEN+1];
+ };
+diff --git a/include/OVGA.h b/include/OVGA.h
+index a01ecbb..6b9d9f5 100644
+--- a/include/OVGA.h
++++ b/include/OVGA.h
+@@ -31,8 +31,11 @@
+ 
+ //----------- define constants ----------//
+ 
+-#define VGA_WIDTH             800
+-#define VGA_HEIGHT            600
++#define VGA_WIDTH             config.win_width
++#define VGA_HEIGHT            config.win_height
++#define VGA_X1            ((VGA_WIDTH>>1)-400)
++#define VGA_Y1            ((VGA_HEIGHT>>1)-300)
++
+ #define VGA_BPP                 8
+ #define VGA_PALETTE_SIZE      256
+ 
+diff --git a/include/OVGABUF.h b/include/OVGABUF.h
+index f0f526c..a25cac6 100644
+--- a/include/OVGABUF.h
++++ b/include/OVGABUF.h
+@@ -131,7 +131,7 @@ public:
+ 
+ 	void		put_bitmap_trans(int x,int y,char* bitmapPtr);
+ 	void		put_bitmap_remap(int desX, int desY, char* bitmapPtr, char *colorTable);
+-	void 		put_large_bitmap(int x1, int y1, File* filePtr);
++	void 		put_large_bitmap(int x1, int y1, File* filePtr, int useStretch=0);
+ 	void		put_bitmap(int x,int y,char* bitmapPtr);
+ 
+ 	//---------- assembly bitmap manipulation functions ----------//
+@@ -139,6 +139,9 @@ public:
+ 	void		fast_put_bitmap(int x, int y, char* bitmapPtr)
+ 				{ IMGblt(buf_ptr(), buf_pitch(), x, y, bitmapPtr); }
+ 
++	void		put_bitmap2_s(int x, int y, int bitmapWidth, int bitmapHeight, char* bitmapPtr)
++				{ IMGblt3(buf_ptr(), buf_pitch(), buf_height(), x, y, bitmapWidth, bitmapHeight, bitmapPtr); }
++
+ 	void		put_bitmap2(int x,int y,int bitmapWidth, int bitmapHeight, char* bitmapPtr)
+ 				{ IMGblt2(buf_ptr(), buf_pitch(), x, y, bitmapWidth, bitmapHeight, bitmapPtr); }
+ 
+diff --git a/include/OWORLDMT.h b/include/OWORLDMT.h
+index 1e2f882..9b48426 100644
+--- a/include/OWORLDMT.h
++++ b/include/OWORLDMT.h
+@@ -32,6 +32,10 @@
+ #include <ODYNARR.h>
+ #endif
+ 
++#ifndef __OCONFIG_H
++#include <OCONFIG.h>
++#endif
++
+ //-------- World matrix size ------------//
+ 
+ #define MAX_WORLD_X_LOC  (World::max_x_loc)
+@@ -45,8 +49,8 @@
+ #define MAX_MAP_WIDTH	200
+ #define MAX_MAP_HEIGHT	200
+ 
+-#define MAP_X1          (588+(MAX_MAP_WIDTH-MAP_WIDTH)/2)
+-#define MAP_Y1          (56 +(MAX_MAP_HEIGHT-MAP_HEIGHT)/2)
++#define MAP_X1          (ZOOM_WIDTH+10+(MAX_MAP_WIDTH-MAP_WIDTH)/2)
++#define MAP_Y1          (ZOOM_Y1+(MAX_MAP_HEIGHT-MAP_HEIGHT)/2)
+ #define MAP_X2          (MAP_X1+MAP_WIDTH-1)
+ #define MAP_Y2          (MAP_Y1+MAP_HEIGHT-1)
+ 
+@@ -56,15 +60,20 @@
+ #define MAP2_LOC_HEIGHT  2			// when MAP_VIEW_SECTION
+ #define MAP2_LOC_WIDTH   2
+ 
++#define MAPMODE_X1       (VGA_WIDTH - 220)
++#define MAPMODE_Y1       3
++#define MAP_MODE_BUTTON_WIDTH 40
++
+ //----------- Zoom window -------------//
+ 
+ #define ZOOM_X1           0     // World Zoom Window
+ #define ZOOM_Y1          56
+-#define ZOOM_X2         575
+-#define ZOOM_Y2         599
+ 
+-#define ZOOM_WIDTH      576     // ZOOM_LOC_WIDTH(32)  * 18 = 576
+-#define ZOOM_HEIGHT     544     // ZOOM_LOC_HEIGHT(32) * 17 = 544
++#define ZOOM_WIDTH      config.zoom_width
++#define ZOOM_HEIGHT     config.zoom_height
++
++#define ZOOM_X2         (ZOOM_X1 + ZOOM_WIDTH)
++#define ZOOM_Y2         (ZOOM_Y1 + ZOOM_HEIGHT)
+ 
+ #define ZOOM_LOC_HEIGHT  32     // in world zoom window
+ #define ZOOM_LOC_WIDTH   32
+diff --git a/src/AM.cpp b/src/AM.cpp
+index 98dcdbc..706ed10 100644
+--- a/src/AM.cpp
++++ b/src/AM.cpp
+@@ -305,7 +305,6 @@ int main(int argc, char **argv)
+ 	sys.set_config_dir();
+ 
+ 	//try to read from CONFIG.DAT, moved to AM.CPP
+-
+ 	if( !config.load("CONFIG.DAT") )
+ 	{
+ 		new_config_dat_flag = 1;
+@@ -315,6 +314,9 @@ int main(int argc, char **argv)
+ 	if( config_adv.locale[0] )
+ 		locale_res.load(config_adv.locale);
+ 
++	//init resolution
++	config.init_resolution();
++
+ 	//----- read command line arguments -----//
+ 
+ 	if( !cmd_line.init(argc, argv) )
+diff --git a/src/ConfigAdv.cpp b/src/ConfigAdv.cpp
+index b62e4ba..f7149f0 100644
+--- a/src/ConfigAdv.cpp
++++ b/src/ConfigAdv.cpp
+@@ -273,6 +273,9 @@ void ConfigAdv::reset()
+ 
+ 	game_file_patching = 1;
+ 
++	vga_resolution_width = 800;
++	vga_resolution_height = 600;
++
+ 	locale[0] = 0;
+ 
+ 	mine_unlimited_reserve = 0;
+@@ -515,6 +518,20 @@ int ConfigAdv::set(char *name, char *value)
+ 			return 0;
+ 		}
+ 	}
++	else if( !strcmp(name, "vga_resolution_width") )
++	{
++		if( !read_int(value, &vga_resolution_width) )
++			return 0;
++		if( CHECK_BOUND(vga_resolution_width, 800, 3840) )
++			return 0;
++	}
++	else if( !strcmp(name, "vga_resolution_height") )
++	{
++		if( !read_int(value, &vga_resolution_height) )
++			return 0;
++		if( CHECK_BOUND(vga_resolution_height, 600, 2160) )
++			return 0;
++	}
+ 	else if( !strcmp(name, "rebel_think_town_action") )
+ 	{
+ 		if( !read_bool(value, &rebel_think_town_action) )
+diff --git a/src/LocaleRes.cpp b/src/LocaleRes.cpp
+index 82e7ed7..bcd7989 100644
+--- a/src/LocaleRes.cpp
++++ b/src/LocaleRes.cpp
+@@ -140,9 +140,42 @@ void LocaleRes::load(const char *locale)
+ 			locale = "en_US";
+ 	}
+ 
+-	setlocale(LC_ALL, locale); // for LC_MESSAGES and LC_CTYPE
++	if( !setlocale(LC_ALL, locale) )
++	{
++		char buf[100];
++		int len = strlen(locale);
++
++		// Try locale.UTF-8
++		snprintf(buf, sizeof(buf), "%s.UTF-8", locale);
++		if( setlocale(LC_ALL, buf) ) { }
++		else if( len > 0 && len < 40 )
++		{
++			// Try locale_LOCALE.UTF-8 (e.g. fr_FR.UTF-8)
++			snprintf(buf, sizeof(buf), "%s_", locale);
++			for( int c=0 ; c<len ; c++ )
++				buf[len+1+c] = (locale[c] >= 'a' && locale[c] <= 'z') ? locale[c] - 32 : locale[c];
++			buf[len*2+1] = 0;
++			strncat(buf, ".UTF-8", sizeof(buf)-strlen(buf)-1);
++			if( setlocale(LC_ALL, buf) ) { }
++			else
++			{
++				// Try locale_LOCALE.utf8
++				snprintf(buf, sizeof(buf), "%s_", locale);
++				for( int c=0 ; c<len ; c++ )
++					buf[len+1+c] = (locale[c] >= 'a' && locale[c] <= 'z') ? locale[c] - 32 : locale[c];
++				buf[len*2+1] = 0;
++				strncat(buf, ".utf8", sizeof(buf)-strlen(buf)-1);
++				setlocale(LC_ALL, buf);
++			}
++		}
++	}
+ 	setenv("LANGUAGE", locale, 1); // if setlocale is not supported
+ 
++	const char *locale_dir = get_locale_dir();
++	if( locale_dir )
++		bindtextdomain(PACKAGE, locale_dir);
++	textdomain(PACKAGE);
++
+ 	LocaleRec *localeRec;
+ 	String localeDbName;
+ 	localeDbName = DIR_RES;
+@@ -174,16 +207,21 @@ void LocaleRes::load(const char *locale)
+ 		strcpy(codeset, "ISO-8859-1");
+ 	}
+ 
+-	String tocode(codeset);
+-	tocode += "//TRANSLIT";
+-
+ 	if( cd != (iconv_t)-1 )
+ 		iconv_close(cd);
+ 	if( cd_latin != (iconv_t)-1 )
+ 		iconv_close(cd_latin);
++
++	String tocode(codeset);
++	tocode += "//TRANSLIT";
+ 	cd = iconv_open(tocode, "");
+-	cd_latin = iconv_open("ISO-8859-1", "");
+-	cd_from_sdl = iconv_open("ISO-8859-1//TRANSLIT//IGNORE", "UTF-8");
++	if( cd == (iconv_t)-1 )
++		cd = iconv_open(codeset, "");
++
++	cd_latin = iconv_open("UTF-8", "");
++	cd_from_sdl = iconv_open("ISO-8859-1//IGNORE", "UTF-8");
++	if( cd_from_sdl == (iconv_t)-1 )
++		cd_from_sdl = iconv_open("ISO-8859-1", "UTF-8");
+ #endif
+ }
+ //------------- End of function LocaleRes::load ---------//
+diff --git a/src/OCONFIG.cpp b/src/OCONFIG.cpp
+index 058fc18..077c03c 100644
+--- a/src/OCONFIG.cpp
++++ b/src/OCONFIG.cpp
+@@ -31,6 +31,8 @@
+ #include "gettext.h"
+ #include <FilePath.h>
+ #include <OGF_REC.h>
++#include <ConfigAdv.h>
++#include <OWORLD.h>
+ 
+ DBGLOG_DEFAULT_CHANNEL(Config);
+ 
+@@ -78,6 +80,32 @@ void Config::deinit()
+ //--------- End of function Config::deinit --------//
+ 
+ 
++//--------- Begin of function Config::init_resolution -----------//
++void Config::init_resolution()
++{
++	// get resolution from config file
++	win_width = config_adv.vga_resolution_width;
++	win_height = config_adv.vga_resolution_height;
++
++	// scale zoom area to fit remaining space after HUD bars
++	// top bar height = 56, right bar width = 224
++	// round to multiples of 32 (tile size) to prevent partial tile rendering
++	zoom_width = ((win_width - 224) / 32) * 32;
++	zoom_height = ((win_height - 56) / 32) * 32;
++
++	// recreate matrices since their sizes depend on ZOOM_WIDTH/ZOOM_HEIGHT
++	// which were evaluated to 0 during static initialization.
++	if (world.zoom_matrix) {
++		delete world.zoom_matrix;
++		world.zoom_matrix = new ZoomMatrix;
++	}
++	if (world.map_matrix) {
++		delete world.map_matrix;
++		world.map_matrix = new MapMatrix;
++	}
++}
++//--------- End of function Config::init_resolution --------//
++
+ //--------- Begin of function Config::default_game_setting ---------//
+ void Config::default_game_setting()
+ {
+diff --git a/src/OFIRM.cpp b/src/OFIRM.cpp
+index 21884df..e702a93 100644
+--- a/src/OFIRM.cpp
++++ b/src/OFIRM.cpp
+@@ -2412,7 +2412,7 @@ int Firm::mobilize_worker(int workerId, char remoteAction)
+ 
+ 	Worker *workerPtr = worker_array+workerId-1;
+ 
+-	if( remoteAction <= COMMAND_REMOTE && !workerPtr->is_nation(firm_recno, nation_recno) )
++	if( remoteAction <= COMMAND_REMOTE && !workerPtr->is_nation(firm_recno, nation_recno, 1) )
+ 	{
+ 		// cannot order mobilization of foreign workers
+ 		return 0;
+diff --git a/src/OFIRMIF2.cpp b/src/OFIRMIF2.cpp
+index 4548211..8a770fc 100644
+--- a/src/OFIRMIF2.cpp
++++ b/src/OFIRMIF2.cpp
+@@ -45,17 +45,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { SPY_BROWSE_X1 = INFO_X1,
+-		 SPY_BROWSE_Y1 = INFO_Y1+75,
+-		 SPY_BROWSE_X2 = INFO_X2,
+-		 SPY_BROWSE_Y2 = SPY_BROWSE_Y1+130,
+-	  };
+-
+-enum { BUTTON_X1 = INFO_X1,
+-		 BUTTON_Y1 = SPY_BROWSE_Y2+28,
+-		 BUTTON_X2 = INFO_X2,
+-		 BUTTON_Y2 = BUTTON_Y1+50,
+-	  };
++#define SPY_BROWSE_X1 INFO_X1
++#define SPY_BROWSE_Y1 INFO_Y1 + 75
++#define SPY_BROWSE_X2 INFO_X2
++#define SPY_BROWSE_Y2 SPY_BROWSE_Y1 + 130
++
++#define BUTTON_X1 INFO_X1
++#define BUTTON_Y1 SPY_BROWSE_Y2 + 28
++#define BUTTON_X2 INFO_X2
++#define BUTTON_Y2 BUTTON_Y1 + 50
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OF_HARB.cpp b/src/OF_HARB.cpp
+index f69bb08..b95e574 100644
+--- a/src/OF_HARB.cpp
++++ b/src/OF_HARB.cpp
+@@ -51,17 +51,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { SHIP_BROWSE_X1 = INFO_X1,
+-		 SHIP_BROWSE_Y1 = INFO_Y1+54,
+-		 SHIP_BROWSE_X2 = INFO_X2,
+-		 SHIP_BROWSE_Y2 = SHIP_BROWSE_Y1+100
+-	  };
+-
+-enum { SHIP_DET_X1 = INFO_X1,
+-		 SHIP_DET_Y1 = SHIP_BROWSE_Y2+5,
+-		 SHIP_DET_X2 = INFO_X2,
+-		 SHIP_DET_Y2 = SHIP_DET_Y1+92
+-	  };
++#define SHIP_BROWSE_X1 INFO_X1
++#define SHIP_BROWSE_Y1 INFO_Y1 + 54
++#define SHIP_BROWSE_X2 INFO_X2
++#define SHIP_BROWSE_Y2 SHIP_BROWSE_Y1 + 100
++
++#define SHIP_DET_X1 INFO_X1
++#define SHIP_DET_Y1 SHIP_BROWSE_Y2 + 5
++#define SHIP_DET_X2 INFO_X2
++#define SHIP_DET_Y2 SHIP_DET_Y1 + 92
+ 
+ //---------- Define constant ------------//
+ 
+diff --git a/src/OF_INN.cpp b/src/OF_INN.cpp
+index 66ee392..35f2258 100644
+--- a/src/OF_INN.cpp
++++ b/src/OF_INN.cpp
+@@ -46,17 +46,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { HIRE_BROWSE_X1 = INFO_X1,
+-		 HIRE_BROWSE_Y1 = INFO_Y1+52,
+-		 HIRE_BROWSE_X2 = INFO_X2,
+-		 HIRE_BROWSE_Y2 = HIRE_BROWSE_Y1+144
+-	  };
+-
+-enum { HIRE_DET_X1 = INFO_X1,
+-		 HIRE_DET_Y1 = HIRE_BROWSE_Y2+5,
+-		 HIRE_DET_X2 = INFO_X2,
+-		 HIRE_DET_Y2 = HIRE_DET_Y1+54
+-	  };
++#define HIRE_BROWSE_X1 INFO_X1
++#define HIRE_BROWSE_Y1 INFO_Y1 + 52
++#define HIRE_BROWSE_X2 INFO_X2
++#define HIRE_BROWSE_Y2 HIRE_BROWSE_Y1 + 144
++
++#define HIRE_DET_X1 INFO_X1
++#define HIRE_DET_Y1 HIRE_BROWSE_Y2 + 5
++#define HIRE_DET_X2 INFO_X2
++#define HIRE_DET_Y2 HIRE_DET_Y1 + 54
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OF_MARK.cpp b/src/OF_MARK.cpp
+index 23f704a..406f801 100644
+--- a/src/OF_MARK.cpp
++++ b/src/OF_MARK.cpp
+@@ -869,6 +869,8 @@ void FirmMarket::set_next_output_firm()
+ 		if( linked_firm_enable_array[next_output_link_id-1] == LINK_EE )
+ 		{
+ 			firmRecno = linked_firm_array[next_output_link_id-1];
++			if( firmRecno < 1 || firmRecno > firm_array.last_ele || firm_array.is_deleted(firmRecno) )
++				continue;
+ 			firmId 	 = firm_array[firmRecno]->firm_id;
+ 
+ 			if( firmId==FIRM_FACTORY )
+diff --git a/src/OGAMCRED.cpp b/src/OGAMCRED.cpp
+index aa083a1..f5084a5 100644
+--- a/src/OGAMCRED.cpp
++++ b/src/OGAMCRED.cpp
+@@ -48,7 +48,10 @@ void Game::view_credits()
+ {
+ 	//----- display the first page ------//
+ 
+-	vga_util.disp_image_file("CREDITS1");
++	int x = (VGA_WIDTH >> 1) - 280, y = (VGA_HEIGHT >> 1) - 184;
++	int BG_X1 = (VGA_WIDTH >> 1) - 400, BG_Y1 = (VGA_HEIGHT >> 1) - 300;
++	vga_back.bar(0, 0, VGA_WIDTH - 1, VGA_HEIGHT - 1, V_BLACK);
++	vga_util.disp_image_file("CREDITS1", BG_X1, BG_Y1);
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+ 	{
+@@ -58,7 +61,7 @@ void Game::view_credits()
+ 
+ 	//------ display the 2nd page -----//
+ 
+-	vga_util.disp_image_file("CREDITS2");
++	vga_util.disp_image_file("CREDITS2", BG_X1, BG_Y1);
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+ 	{
+@@ -68,7 +71,7 @@ void Game::view_credits()
+ 
+ 	//------ display the 3rd page -----//
+ 
+-	vga_util.disp_image_file("CREDITS3");
++	vga_util.disp_image_file("CREDITS3", BG_X1, BG_Y1);
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+ 	{
+@@ -78,7 +81,7 @@ void Game::view_credits()
+ 
+ 	//------ display the 4th page -----//
+ 
+-	vga_util.disp_image_file("CREDITS4");
++	vga_util.disp_image_file("CREDITS4", BG_X1, BG_Y1);
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+ 	{
+@@ -89,7 +92,7 @@ void Game::view_credits()
+ #if(defined(FRENCH))
+ 	//------ display the 5th page -----//
+ 
+-	vga_util.disp_image_file("CREDITS5");
++	vga_util.disp_image_file("CREDITS5", BG_X1, BG_Y1);
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+ 	{
+@@ -100,7 +103,7 @@ void Game::view_credits()
+ 
+ 	//------ display the 6th page -----//
+ 
+-	vga_util.disp_image_file("CREDITS6");
++	vga_util.disp_image_file("CREDITS6", BG_X1, BG_Y1);
+ 	disp_credits_6();
+ 
+ 	if( mouse.wait_press(60)==2 )		// return 2 if pressed ESC or right mouse click
+diff --git a/src/OGAMEMP.cpp b/src/OGAMEMP.cpp
+index 69dd50b..63cc720 100644
+--- a/src/OGAMEMP.cpp
++++ b/src/OGAMEMP.cpp
+@@ -1068,8 +1068,13 @@ const char *service_long_desc[SERVICE_BUTTON_NUM] =
+ // 
+ int Game::mp_select_service()
+ {
+-	static short buttonX[SERVICE_BUTTON_NUM] = { 171, 171, 171 };
+-	static short buttonY[SERVICE_BUTTON_NUM] = {  57, 125, 193 };
++
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++
++	enum { BUTTON_NUM = 3 };
++	static short buttonX[BUTTON_NUM] = { 171, 171, 171 };
++	static short buttonY[BUTTON_NUM] = {  57, 125, 193 };
+ 	#define SERVICE_BUTTON_WIDTH 459
+ 	#define SERVICE_BUTTON_HEIGHT 67
+ 	enum { DESC_MARGIN = 10, DESC_TOP_MARGIN = 6 };
+@@ -1081,15 +1086,15 @@ int Game::mp_select_service()
+ 
+ 	// -------- display button ---------//
+ 	Button3D returnButton;
+-	returnButton.create(520, 538, "CANCEL-U", "CANCEL-D", 1, 0);
++	returnButton.create(MUPG_X1+520, MUPG_Y1 + 538, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+-	ButtonCustom serviceButton[SERVICE_BUTTON_NUM];
++	ButtonCustom serviceButton[BUTTON_NUM];
+ 	int b;
+-//	for( b = 0; b < SERVICE_BUTTON_NUM && mp_obj.get_service_provider(b+1); ++b )
+-	for( b = 0; b < SERVICE_BUTTON_NUM; ++b )
++//	for( b = 0; b < BUTTON_NUM && mp_obj.get_service_provider(b+1); ++b )
++	for( b = 0; b < BUTTON_NUM; ++b )
+ 	{
+-		serviceButton[b].create(buttonX[b], buttonY[b], 
+-			buttonX[b]+SERVICE_BUTTON_WIDTH-1, buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
++		serviceButton[b].create(MUPG_X1 + buttonX[b], MUPG_Y1 + buttonY[b],
++			MUPG_X1 + buttonX[b]+SERVICE_BUTTON_WIDTH-1, MUPG_Y1 + buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL,0) );
+ 	}
+ 
+@@ -1125,12 +1130,15 @@ int Game::mp_select_service()
+ 			{
+ 				//--------- display interface screen -------//
+ 
+-				image_menu.put_to_buf( &vga_back, "MPG-PG1" );
++// 				image_menu.put_to_buf( &vga_back, "MPG-PG1" );
++				image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG1");
+ 				// protection : image_menu.put_to_buf( &vga_back, "MPG-PG1");
+ 				// ensure the user has the release version (I_MENU.RES)
+ 				// image_menu2.put_to_buf( &vga_back, "MPG-PG1") get the real one
+-				image_menu2.put_to_buf( &vga_back, "MPG-PG1");
+-				image_menu.put_back( 234, 15,
++// 				image_menu2.put_to_buf( &vga_back, "MPG-PG1");
++				image_menu2.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG1");
++
++				image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15,
+ 					sub_game_mode == 0 ? (char*)"TOP-NMPG" : (char*)"TOP-LMPG" );
+ 				vga_util.blt_buf(0, 0, vga_back.buf_width()-1, vga_back.buf_height()-1, 0);
+ 
+@@ -1141,12 +1149,12 @@ int Game::mp_select_service()
+ 					// write service name to back buffer
+ 					char useBack = vga.use_back_buf;
+ 					vga.use_back();
+-					font_bible.center_put(buttonX[b], y,
+-						buttonX[b]+SERVICE_BUTTON_WIDTH-1, y+font_bible.max_font_height-1,
++					font_bible.center_put(MUPG_X1 + buttonX[b], MUPG_Y1 + y,
++						MUPG_X1 + buttonX[b]+SERVICE_BUTTON_WIDTH-1, MUPG_Y1 + y+font_bible.max_font_height-1,
+ 						_(service_short_desc[b]));
+ 					y += font_bible.max_font_height;
+-					font_san.put_paragraph(buttonX[b]+DESC_MARGIN, y,
+-						buttonX[b]+SERVICE_BUTTON_WIDTH-DESC_MARGIN-1, buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
++					font_san.put_paragraph(MUPG_X1 + buttonX[b]+DESC_MARGIN, MUPG_Y1 + y,
++						MUPG_X1 + buttonX[b]+SERVICE_BUTTON_WIDTH-DESC_MARGIN-1, MUPG_Y1 + buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
+ 						_(service_long_desc[b]));
+ 					if( !useBack )
+ 						vga.use_front();
+@@ -1211,8 +1219,12 @@ const char *login_dialog_txt[] =
+ // return 0 = cancel, 1 = create, 2 = join
+ int Game::mp_select_mode(char *defSaveFileName, int service_mode)
+ {
+-	static short buttonX[SERVICE_BUTTON_NUM] = { 171, 171, 171 };
+-	static short buttonY[SERVICE_BUTTON_NUM] = {  57, 125, 193 };
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++
++	enum { BUTTON_NUM = 3 };
++	static short buttonX[BUTTON_NUM] = { 171, 171, 171 };
++	static short buttonY[BUTTON_NUM] = {  57, 125, 193 };
+ 	#define SERVICE_BUTTON_WIDTH 459
+ 	#define SERVICE_BUTTON_HEIGHT 67
+ 	enum { DESC_MARGIN = 10, DESC_TOP_MARGIN = 6 };
+@@ -1233,20 +1245,20 @@ int Game::mp_select_mode(char *defSaveFileName, int service_mode)
+ 		config.player_name[HUMAN_NAME_LEN] = '\0';
+ 	}
+ 
+-	createButton.create(120, 538, "CREATE-U", "CREATE-D", 1, 0);
++	createButton.create(MUPG_X1 + 120, MUPG_Y1 + 538, "CREATE-U", "CREATE-D", 1, 0);
+ 	if( mp_obj.is_lobbied() == 2 )		// join only
+ 		createButton.enable_flag = 0;		// avoid paint();
+-	joinButton.create(320, 538, "JOIN-U", "JOIN-D", 1, 0);
++	joinButton.create(MUPG_X1 + 320, MUPG_Y1 + 538, "JOIN-U", "JOIN-D", 1, 0);
+ 	if( mp_obj.is_lobbied() == 1 )		// join only
+ 		joinButton.enable_flag = 0;		// avoid paint();
+ 	// ####### end Gilbert 13/2 ##########//
+-	returnButton.create(520, 538, "CANCEL-U", "CANCEL-D", 1, 0);
++	returnButton.create(MUPG_X1 + 520, MUPG_Y1 + 538, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+-	ButtonCustom serviceButton[SERVICE_BUTTON_NUM];
+-	for( int b = 0; b < SERVICE_BUTTON_NUM; ++b )
++	ButtonCustom serviceButton[BUTTON_NUM];
++	for( int b = 0; b < BUTTON_NUM; ++b )
+ 	{
+-		serviceButton[b].create(buttonX[b], buttonY[b],
+-			buttonX[b]+SERVICE_BUTTON_WIDTH-1, buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
++		serviceButton[b].create(MUPG_X1 + buttonX[b], MUPG_Y1 + buttonY[b],
++			MUPG_X1+buttonX[b]+SERVICE_BUTTON_WIDTH-1, MUPG_Y1+buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL,0) );
+ 	}
+ 
+@@ -1283,8 +1295,8 @@ int Game::mp_select_mode(char *defSaveFileName, int service_mode)
+ 	GetAGroup keyInField(2);
+ 	GetA &getName = keyInField[0];
+ 	GetA &getSaveFile = keyInField[1];
+-	getName.init( 319, 423, 582, config.player_name, HUMAN_NAME_LEN, &font_san, 0 ,1);
+-	getSaveFile.init( 394, 447, 582, saveFileName, 8, &font_san, 0, 1);
++	getName.init(MUPG_X1 + 319, MUPG_Y1 + 423, MUPG_X1 + 582, config.player_name, HUMAN_NAME_LEN, &font_san, 0 ,1);
++	getSaveFile.init(MUPG_X1 + 394, MUPG_Y1 + 447, MUPG_X1 + 582, saveFileName, 8, &font_san, 0, 1);
+ 	keyInField.set_focus(0, 0);		// 0 in 2nd parameter - don't display
+ 
+ 	int rc = 0;
+@@ -1316,26 +1328,30 @@ int Game::mp_select_mode(char *defSaveFileName, int service_mode)
+ 			{
+ 				//--------- display interface screen -------//
+ 
+-				image_menu.put_to_buf( &vga_back, "MPG-PG1" );
++// 				image_menu.put_to_buf( &vga_back, "MPG-PG1" );
++				image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG1");
+ 				// protection : image_menu.put_to_buf( &vga_back, "MPG-PG1");
+ 				// ensure the user has the release version (I_MENU.RES)
+ 				// image_menu2.put_to_buf( &vga_back, "MPG-PG1") get the real one
+-				image_menu2.put_to_buf( &vga_back, "MPG-PG1");
+-				image_menu.put_back( 234, 15,
++// 				image_menu2.put_to_buf( &vga_back, "MPG-PG1");
++				image_menu2.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG1");
++
++
++				image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15,
+ 					sub_game_mode == 0 ? (char*)"TOP-NMPG" : (char*)"TOP-LMPG" );
+ 				int b = 0;
+-				for( b = 0; b < SERVICE_BUTTON_NUM; ++b )
++				for( b = 0; b < BUTTON_NUM; ++b )
+ 				{
+ 					int y = buttonY[b]+DESC_TOP_MARGIN;
+ 					// write service name to back buffer
+ 					char useBack = vga.use_back_buf;
+ 					vga.use_back();
+-					font_bible.center_put(buttonX[b], y,
+-						buttonX[b]+SERVICE_BUTTON_WIDTH-1, y+font_bible.max_font_height-1,
++					font_bible.center_put(MUPG_X1 + buttonX[b], MUPG_Y1 + y,
++						MUPG_X1 + buttonX[b]+SERVICE_BUTTON_WIDTH-1, MUPG_Y1 + y+font_bible.max_font_height-1,
+ 						_(service_short_desc[b]));
+ 					y += font_bible.max_font_height;
+-					font_san.put_paragraph(buttonX[b]+DESC_MARGIN, y,
+-						buttonX[b]+SERVICE_BUTTON_WIDTH-DESC_MARGIN-1, buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
++					font_san.put_paragraph(MUPG_X1 + buttonX[b]+DESC_MARGIN, MUPG_Y1 + y,
++						MUPG_X1 + buttonX[b]+SERVICE_BUTTON_WIDTH-DESC_MARGIN-1, MUPG_Y1 + buttonY[b]+SERVICE_BUTTON_HEIGHT-1,
+ 						_(service_long_desc[b]));
+ 					if( !useBack )
+ 						vga.use_front();
+@@ -1478,6 +1494,9 @@ struct InfoBox {
+ 
+ void mp_info_box_show(InfoBox *info, const char *tell_string, const char *button_text)
+ {
++	//int MUPG_X1 = VGA_X1;
++	//int MUPG_Y1 = VGA_Y1;
++
+ 	const int box_button_margin = 32;
+ 
+ 	if (info->visible)
+@@ -1512,13 +1531,16 @@ int mp_info_box_detect(InfoBox *info)
+ // The return is 1 when ok is pressed, and 0 when cancel is pressed.
+ int Game::input_box(const char *tell_string, char *buf, int len, char hide_input)
+ {
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++
+ 	const char *buttonDes1 = _("Ok");
+ 	const char *buttonDes2 = _("Cancel");
+ 	const int box_button_margin = 32; // BOX_BUTTON_MARGIN
+-	const int box_x1 = 250;
+-	const int box_y1 = 200;
+-	const int box_x2 = 550;
+-	const int box_y2 = 275;
++	const int box_x1 = MUPG_X1 + 250;
++	const int box_y1 = MUPG_Y1 + 200;
++	const int box_x2 = MUPG_X1 + 550;
++	const int box_y2 = MUPG_Y1 + 275;
+ 	const int box_side_margin = 10;
+ 	const int box_top_margin = 5;
+ 	int width, buttonWidth1, ret;
+@@ -1608,9 +1630,11 @@ int Game::input_box(const char *tell_string, char *buf, int len, char hide_input
+ // The return is 1 when ok is pressed, and 0 when cancel is pressed.
+ int Game::input_name_pass(const char *txt[], char *name, int name_len, char *pass, int pass_len)
+ {
+-	const char *title = _(txt[0]);
+-	const char *inputFieldDes1 = _(txt[1]);
+-	const char *inputFieldDes2 = _(txt[2]);
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++	const char *title = txt[0];
++	const char *inputFieldDes1 = txt[1];
++	const char *inputFieldDes2 = txt[2];
+ 	const char *buttonDes1 = _("Ok");
+ 	const char *buttonDes2 = _("Cancel");
+ 	const int box_button_margin = 32; // BOX_BUTTON_MARGIN
+@@ -1637,7 +1661,7 @@ int Game::input_name_pass(const char *txt[], char *name, int name_len, char *pas
+ 
+ 	box_x1 = VGA_WIDTH / 2 - boxWidth / 2;
+ 	box_x2 = VGA_WIDTH / 2 + boxWidth / 2;
+-	box_y1 = 200;
++	box_y1 = MUPG_Y1+200;
+ 	box_y2 = box_y1 + boxHeight;
+ 	field_x_pos = box_side_margin + fieldDesWidth;
+ 
+@@ -1747,7 +1771,8 @@ const char *login_failed_msg = N_("Unable to connect to the 7kfans service.\n(No
+ //-------- Begin of function Game::mp_select_session --------//
+ int Game::mp_select_session()
+ {
+-
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
+ #define SSOPTION_PAGE           0x00000010
+ #define SSOPTION_POLL_SESSION   0x00000001
+ #define SSOPTION_DISP_SESSION   0x00000002
+@@ -1783,23 +1808,23 @@ int Game::mp_select_session()
+ 	// ------- initialized button -----------//
+ 
+ 	Button3D joinButton;
+-	joinButton.create(JOIN_BUTTON_X, JOIN_BUTTON_Y, "JOIN-U", "JOIN-D", 1, 0);
++	joinButton.create(MUPG_X1 + JOIN_BUTTON_X, MUPG_Y1 + JOIN_BUTTON_Y, "JOIN-U", "JOIN-D", 1, 0);
+ 	joinButton.disable();
+ 
+ 	Button3D cancelButton;
+-	cancelButton.create(CANCEL_BUTTON_X, CANCEL_BUTTON_Y, "CANCEL-U", "CANCEL-D", 1, 0);
++	cancelButton.create(MUPG_X1 + CANCEL_BUTTON_X, MUPG_Y1 + CANCEL_BUTTON_Y, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	SlideVBar scrollBar;
+ 
+-	scrollBar.init_scroll(SCROLL_X1, SCROLL_Y1, SCROLL_X2, SCROLL_Y2,
++	scrollBar.init_scroll(MUPG_X1 + SCROLL_X1, MUPG_Y1 + SCROLL_Y1, MUPG_X1 + SCROLL_X2, MUPG_Y1 + SCROLL_Y2,
+ 		MAX_BUTTON, disp_scroll_bar_func);
+ 	scrollBar.set(1, 1, 1);		// assume it has one record
+ 
+ 	Button3D scrollUp;
+-	scrollUp.create(SCROLL_X1,SCROLL_Y1-17, "SV-UP-U", "SV-UP-D", 1, 0);
++	scrollUp.create(MUPG_X1 + SCROLL_X1, MUPG_Y1 + SCROLL_Y1-17, "SV-UP-U", "SV-UP-D", 1, 0);
+ 
+ 	Button3D scrollDown;
+-	scrollDown.create(SCROLL_X1,SCROLL_Y2+1, "SV-DW-U", "SV-DW-D", 1, 0);
++	scrollDown.create(MUPG_X1 + SCROLL_X1, MUPG_Y1 + SCROLL_Y2+1, "SV-DW-U", "SV-DW-D", 1, 0);
+ 
+ 	Blob browseArea[MAX_BUTTON];
+ 
+@@ -1835,9 +1860,9 @@ int Game::mp_select_session()
+ 			if( refreshFlag & SSOPTION_PAGE )
+ 			{
+ 				// --------- display interface screen -------//
+-				image_menu.put_to_buf( &vga_back, "MPG-PG2" );
+-				image_menu2.put_to_buf( &vga_back, "MPG-PG2" );
+-				image_menu.put_back( 234, 15,
++				image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG2");
++				image_menu2.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-PG2");
++				image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15,
+ 					sub_game_mode == 0 ? (char*)"TOP-NMPG" : (char*)"TOP-LMPG" );
+ 				vga_util.blt_buf(0, 0, vga_back.buf_width()-1, vga_back.buf_height()-1, 0);
+ 
+@@ -2329,6 +2354,9 @@ int Game::mp_get_leader_board()
+ // return 0 = cancel, 1 = ok
+ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ {
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++
+ 	const int offsetY = 212;
+ 	char optionMode = OPTION_BASIC;
+ 	char menuTitleBitmap[] = "TOP-NMPG";
+@@ -2427,13 +2455,13 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	for( i = 0; i < MAX_RACE; ++i )
+ 	{
+ #if(MAX_RACE == 10)
+-		raceGroup[i].create(220+(i%5)*BASIC_OPTION_X_SPACE, (i/5)*BASIC_OPTION_HEIGHT+offsetY+70,
+-			220+(i%5+1)*BASIC_OPTION_X_SPACE-1, (i/5+1)*BASIC_OPTION_HEIGHT+offsetY+70-1,
++		raceGroup[i].create(MUPG_X1+220+(i%5)*BASIC_OPTION_X_SPACE, (i/5)*BASIC_OPTION_HEIGHT+ MUPG_Y1 + offsetY+70,
++			MUPG_X1 + 220+(i%5+1)*BASIC_OPTION_X_SPACE-1, (i/5+1)*BASIC_OPTION_HEIGHT+ MUPG_Y1 + offsetY+70-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ 		#define Y_SHIFT_FLAG 1
+ #else
+-		raceGroup[i].create(118+i*BASIC_OPTION_X_SPACE, offsetY+93,
+-			118+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+93+BASIC_OPTION_HEIGHT-1,
++		raceGroup[i].create(MUPG_X1 + 118+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+93,
++			MUPG_X1 + 118+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+93+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ 		#define Y_SHIFT_FLAG 0
+ #endif
+@@ -2449,8 +2477,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		colorGroup[i].create(195+i*COLOR_OPTION_X_SPACE, offsetY+139+Y_SHIFT,
+-			195+(i+1)*COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		colorGroup[i].create(MUPG_X1 + 195+i*COLOR_OPTION_X_SPACE, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 195+(i+1)*COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&colorGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -2464,11 +2492,11 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		aiNationInc.create(595, offsetY+139+Y_SHIFT, 
+-			595+COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationInc.create(MUPG_X1 + 595, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 595+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, +1) );
+-		aiNationDec.create(630, offsetY+139+Y_SHIFT,
+-			630+COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationDec.create(MUPG_X1 + 630, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 630+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, -1) );
+ 		#undef Y_SHIFT
+ 	}
+@@ -2483,8 +2511,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		diffGroup[i].create( 205+i*BASIC_OPTION_X_SPACE, offsetY+184+Y_SHIFT,
+-			205+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+184+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		diffGroup[i].create(MUPG_X1 + 205+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+184+Y_SHIFT,
++			MUPG_X1 + 205+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+184+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&diffGroup, i), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -2499,8 +2527,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		terrainGroup[i].create(166+i*BASIC_OPTION_X_SPACE, offsetY+248+Y_SHIFT, 
+-			166+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		terrainGroup[i].create(MUPG_X1 + 166+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+248+Y_SHIFT,
++			MUPG_X1 + 166+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&terrainGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -2515,14 +2543,14 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		landGroup[i].create(439+i*BASIC_OPTION_X_SPACE, offsetY+248+Y_SHIFT,
+-			439+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		landGroup[i].create(MUPG_X1 + 439+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+248+Y_SHIFT,
++			MUPG_X1 + 439+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&landGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+ 
+ 	GetA messageField;
+-	messageField.init( 190, 116, 700, typingMsg.content,
++	messageField.init(MUPG_X1 + 190, MUPG_Y1 + 116, MUPG_X1 + 700, typingMsg.content,
+ 		MpStructChatMsg::MSG_LENGTH, &font_san, 0, 1);
+ 
+ 	// ###### begin Gilbert 25/10 #######//
+@@ -2531,14 +2559,14 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	MpStructSeedStr msgSeedStr(info.random_seed);
+ 	GetA mapIdField;
+ #if(defined(SPANISH))
+-	#define MAPID_X1 588
++	#define MAPID_X1 MUPG_X1+588
+ #elif(defined(FRENCH))
+-	#define MAPID_X1 578
++	#define MAPID_X1 MUPG_X1+578
+ #else
+-	#define MAPID_X1 564
++	#define MAPID_X1 MUPG_X1+564
+ #endif
+ 
+-	mapIdField.init( MAPID_X1, offsetY+83, 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
++	mapIdField.init( MAPID_X1, MUPG_Y1 + offsetY+83, MUPG_X1 + 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
+ #undef MAPID_X1
+ 	// ###### end Gilbert 25/10 #######//
+ 
+@@ -2547,8 +2575,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup exploreGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		exploreGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+74, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+74+BASIC_OPTION_HEIGHT-1,
++		exploreGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+74,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+74+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&exploreGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -2557,8 +2585,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup fogGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		fogGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+106, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+106+BASIC_OPTION_HEIGHT-1,
++		fogGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+106,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+106+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&fogGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -2567,8 +2595,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup treasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		treasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+138,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+138+BASIC_OPTION_HEIGHT-1,
++		treasureGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+138,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+138+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&treasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -2577,8 +2605,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup aiTreasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiTreasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+170,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+170+BASIC_OPTION_HEIGHT-1,
++		aiTreasureGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+170,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiTreasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -2587,8 +2615,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup aiAggressiveGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiAggressiveGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+202,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+202+BASIC_OPTION_HEIGHT-1,
++		aiAggressiveGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+202,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiAggressiveGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -2597,8 +2625,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup monsterGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		monsterGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+234, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+234+BASIC_OPTION_HEIGHT-1,
++		monsterGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+234,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&monsterGroup, i), 0, 0);
+ 	}
+ 
+@@ -2607,19 +2635,19 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup randomStartUpGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		randomStartUpGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+266, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+266+BASIC_OPTION_HEIGHT-1,
++		randomStartUpGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+266,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomStartUpGroup, 1-i), 0, 0);
+ 	}
+ 
+ 	//  -------- initialize start_up_raw_site buttons --------- //
+ 
+ 	ButtonCustom rawSiteInc, rawSiteDec;
+-	rawSiteInc.create( 358, offsetY+72, 
+-		358+COLOR_OPTION_X_SPACE-1, offsetY+72+COLOR_OPTION_HEIGHT-1,
++	rawSiteInc.create(MUPG_X1 + 358, MUPG_Y1 + offsetY+72,
++		MUPG_X1 + 358+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+72+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+-	rawSiteDec.create( 393, offsetY+72, 
+-		393+COLOR_OPTION_X_SPACE-1, offsetY+72+COLOR_OPTION_HEIGHT-1,
++	rawSiteDec.create(MUPG_X1 + 393, MUPG_Y1 + offsetY+72,
++		MUPG_X1 + 393+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+72+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+ 
+ 	// --------- initialize start_up_has_mine_nearby button group --------//
+@@ -2627,8 +2655,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup nearRawGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nearRawGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+104,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+104+BASIC_OPTION_HEIGHT-1,
++		nearRawGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+104,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+104+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nearRawGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -2639,8 +2667,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup townStartGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townStartGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+136, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+136+BASIC_OPTION_HEIGHT-1,
++		townStartGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+136,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+136+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townStartGroup, startTownArray[i]), 0, 0);
+ 	}
+ 
+@@ -2649,8 +2677,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup townResistGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townResistGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+168, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+168+BASIC_OPTION_HEIGHT-1,
++		townResistGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+168,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+168+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townResistGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -2659,8 +2687,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup townEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		townEmergeGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+200,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+200+BASIC_OPTION_HEIGHT-1,
++		townEmergeGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+200,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+200+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -2669,8 +2697,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup nationEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nationEmergeGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+232,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+232+BASIC_OPTION_HEIGHT-1,
++		nationEmergeGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+232,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+232+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nationEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -2679,8 +2707,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustomGroup randomEventGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		randomEventGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+264, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+264+BASIC_OPTION_HEIGHT-1,
++		randomEventGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+264,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+264+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomEventGroup, i), 0, 0);
+ 	}
+ 
+@@ -2690,55 +2718,55 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	ButtonCustom clearEnemyButton, clearMonsterButton, enoughPeopleButton, enoughIncomeButton, enoughScoreButton, timeLimitButton;
+ 	ButtonCustom peopleInc, peopleDec, incomeInc, incomeDec, scoreInc, scoreDec, yearInc, yearDec;
+ 	
+-	clearEnemyButton.create( 209, offsetY+109, 209+19, offsetY+109+19,	// -3
++	clearEnemyButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+109, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+109+19,	// -3
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 1);
+ 	clearEnemyButton.enable_flag = 0;;
+-	clearMonsterButton.create( 209, offsetY+142, 209+19, offsetY+142+19,
++	clearMonsterButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+142, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+142+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_destroy_monster);
+-	enoughPeopleButton.create( 209, offsetY+175, 209+19, offsetY+175+19,
++	enoughPeopleButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+175, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+175+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_population_flag);
+-	enoughIncomeButton.create( 209, offsetY+208, 209+19, offsetY+208+19,
++	enoughIncomeButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+208, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+208+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_economic_score_flag);
+-	enoughScoreButton.create( 209, offsetY+241, 209+19, offsetY+241+19,
++	enoughScoreButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+241, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+241+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_total_score_flag);
+-	timeLimitButton.create( 209, offsetY+273, 209+19, offsetY+273+19,	// +29
++	timeLimitButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+273, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+273+19,	// +29
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_year_limit_flag);
+ 
+-	peopleInc.create( 524, offsetY+170,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+170+COLOR_OPTION_HEIGHT-1, 
++	peopleInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+170,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	peopleDec.create( 559, offsetY+170, 
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+170+COLOR_OPTION_HEIGHT-1, 
++	peopleDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+170,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeInc.create( 524, offsetY+202,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+202+COLOR_OPTION_HEIGHT-1, 
++	incomeInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+202,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeDec.create( 559, offsetY+202,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+202+COLOR_OPTION_HEIGHT-1, 
++	incomeDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+202,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreInc.create( 524, offsetY+234,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+234+COLOR_OPTION_HEIGHT-1, 
++	scoreInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+234,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreDec.create( 559, offsetY+234,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+234+COLOR_OPTION_HEIGHT-1, 
++	scoreDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+234,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearInc.create( 524, offsetY+266,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+266+COLOR_OPTION_HEIGHT-1, 
++	yearInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+266,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearDec.create( 559, offsetY+266,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+266+COLOR_OPTION_HEIGHT-1, 
++	yearDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+266,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+ 	// ##### end Gilbert 25/10 #######//
+ 
+ 	Button3D startButton, readyButton, returnButton;
+-	readyButton.create(120, 538, "READY-U", "READY-D", 1, 0);
+-	startButton.create(320, 538, "START-U", "START-D", 1, 0);
+-	returnButton.create(520, 538, "CANCEL-U", "CANCEL-D", 1, 0);
++	readyButton.create(MUPG_X1 + 120, MUPG_Y1 + 538, "READY-U", "READY-D", 1, 0);
++	startButton.create(MUPG_X1 + 320, MUPG_Y1 + 538, "START-U", "START-D", 1, 0);
++	returnButton.create(MUPG_X1 + 520, MUPG_Y1 + 538, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	InfoBox info_box;
+ 
+@@ -2774,14 +2802,15 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-BSC");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1,"MPG-BSC");
+ #if(MAX_RACE == 10)
+ 					// protection : image_menu.put_to_buf( &vga_back, "MPG-BSC");
+ 					// ensure the user has the release version (I_MENU.RES)
+ 					// image_menu2.put_to_buf( &vga_back, "MPG-BSC") get the real one
+-					image_menu2.put_to_buf( &vga_back, "MPG-BSC");
++// 					image_menu2.put_to_buf( &vga_back, "MPG-BSC");
++					image_menu2.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-BSC");
+ #endif
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++					image_menu.put_back(MUPG_X1+234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RACE )
+@@ -2795,7 +2824,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 					#else
+ 						#define Y_SHIFT 0
+ 					#endif
+-					font_san.center_put(564, offsetY+144+Y_SHIFT, 564+25, offsetY+144+Y_SHIFT+21,
++					font_san.center_put(MUPG_X1 + 564, MUPG_Y1+offsetY+144+Y_SHIFT, 
++						MUPG_X1 + 564+25, MUPG_Y1+offsetY+144+Y_SHIFT+21,
+ 						misc.format(tempConfig.ai_nation_count), 1);
+ 					aiNationInc.paint();
+ 					aiNationDec.paint();
+@@ -2814,8 +2844,10 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-O1");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++
++// 					image_menu.put_to_buf( &vga_back, "MPG-O1");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-O1");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				// ###### begin Gilbert 25/10 #######//
+@@ -2843,13 +2875,15 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-O2");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "MPG-O2");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-O2");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RAW )
+ 				{
+-					font_san.center_put(327, offsetY+77, 327+25, offsetY+77+21,
++					font_san.center_put(MUPG_X1 + 327, MUPG_Y1+offsetY+77, 
++						MUPG_X1 + 327+25, MUPG_Y1+offsetY+77+21,
+ 						misc.format(tempConfig.start_up_raw_site), 1);
+ 					rawSiteInc.paint();
+ 					rawSiteDec.paint();
+@@ -2877,8 +2911,9 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-GOAL");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "MPG-GOAL");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-GOAL");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_CLEAR_ENEMY )
+@@ -2889,7 +2924,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				if( refreshFlag & SGOPTION_ENOUGH_PEOPLE )
+ 				{
+ 					enoughPeopleButton.paint(tempConfig.goal_population_flag);
+-					font_san.center_put( 446, offsetY+176, 446+67, offsetY+176+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1+offsetY+176, 
++						MUPG_X1 + 446+67, MUPG_Y1+offsetY+176+21,
+ 						misc.format(tempConfig.goal_population), 1);
+ 					peopleInc.paint();
+ 					peopleDec.paint();
+@@ -2897,7 +2933,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				if( refreshFlag & SGOPTION_ENOUGH_INCOME )
+ 				{
+ 					enoughIncomeButton.paint(tempConfig.goal_economic_score_flag);
+-					font_san.center_put( 446, offsetY+207, 446+67, offsetY+207+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1+offsetY+207, 
++						MUPG_X1 + 446+67, MUPG_Y1+offsetY+207+21,
+ 						misc.format(tempConfig.goal_economic_score), 1);
+ 					incomeInc.paint();
+ 					incomeDec.paint();
+@@ -2905,7 +2942,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				if( refreshFlag & SGOPTION_ENOUGH_SCORE )
+ 				{
+ 					enoughScoreButton.paint(tempConfig.goal_total_score_flag);
+-					font_san.center_put( 446, offsetY+239, 446+67, offsetY+239+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1+offsetY+239, 
++						MUPG_X1 + 446+67, MUPG_Y1+offsetY+239+21,
+ 						misc.format(tempConfig.goal_total_score), 1);
+ 					scoreInc.paint();
+ 					scoreDec.paint();
+@@ -2913,7 +2951,8 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				if( refreshFlag & SGOPTION_TIME_LIMIT )
+ 				{
+ 					timeLimitButton.paint(tempConfig.goal_year_limit_flag);
+-					font_san.center_put( 446, offsetY+271, 446+33, offsetY+271+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1+offsetY+271, 
++						MUPG_X1 + 446+33, MUPG_Y1+offsetY+271+21,
+ 						misc.format(tempConfig.goal_year_limit), 1);
+ 					yearInc.paint();
+ 					yearDec.paint();
+@@ -2924,15 +2963,15 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			// -------- refresh players in the session --------//
+ 			if( mRefreshFlag & MGOPTION_PLAYERS )
+ 			{
+-				vga_util.blt_buf( 96, 46, 702, 100, 0 );
++				vga_util.blt_buf(MUPG_X1 + 96, MUPG_Y1 + 46, MUPG_X1 + 702, MUPG_Y1 + 100, 0 );
+ 				for( p = 0; p < regPlayerCount; ++p)
+ 				{
+ 					if( playerReadyFlag[p] )
+ 					{
+-						image_menu.put_front( tickX[p]+3, tickY[p]+3, "NMPG-RCH" );
++						image_menu.put_front(MUPG_X1 + tickX[p]+3, MUPG_Y1 + tickY[p]+3, "NMPG-RCH" );
+ 					}
+ 					PlayerDesc *dispPlayer = mp_obj.search_player(regPlayerId[p]);
+-					font_san.put( tickX[p]+nameOffsetX, tickY[p]+nameOffsetY, dispPlayer?dispPlayer->name:(char*)_("?anonymous?") );
++					font_san.put(MUPG_X1 + tickX[p]+nameOffsetX, MUPG_Y1 + tickY[p]+nameOffsetY, dispPlayer?dispPlayer->name:(char*)_("?anonymous?") );
+ 				}
+ 			}
+ 
+@@ -2945,20 +2984,20 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 			// ------------- display incoming chat message --------//
+ 			if( mRefreshFlag & MGOPTION_IN_MESSAGE )
+ 			{
+-				vga_util.blt_buf( 101, 135, 700, 202, 0 );
++				vga_util.blt_buf(MUPG_X1 + 101, MUPG_Y1 + 135, MUPG_X1 + 700, MUPG_Y1 + 202, 0 );
+ 				for( p = 1; p <= 4 && p <= messageList.size() ; ++p)
+ 				{
+-					int ny = 136+(p-1)*16;
+-					int nx = font_san.put( 102, ny, ((MpStructChatMsg *)messageList.get(p))->sender );
+-					nx = font_san.put( nx, ny, " : ");
+-					nx = font_san.put( nx, ny, ((MpStructChatMsg *)messageList.get(p))->content, 0, 700);
++					int ny = MUPG_Y1 + 136+(p-1)*16;
++					int nx = font_san.put(MUPG_X1 + 102, ny, ((MpStructChatMsg *)messageList.get(p))->sender );
++					nx = font_san.put(nx, ny, " : ");
++					nx = font_san.put(nx, ny, ((MpStructChatMsg *)messageList.get(p))->content, 0, MUPG_X1 + 700);
+ 				}
+ 			}
+ 
+ 			// ------- display difficulty -------//
+ 			if( (refreshFlag & SGOPTION_DIFFICULTY) || (mRefreshFlag & MGOPTION_PLAYERS) )
+ 			{
+-				font_san.center_put( 718, offsetY+74, 780, offsetY+108, 
++				font_san.center_put(MUPG_X1 + 718, MUPG_Y1 + offsetY+74, MUPG_X1 + 780, MUPG_Y1 +offsetY+108,
+ 					misc.format(tempConfig.multi_player_difficulty(regPlayerCount-1)), 1 );
+ 			}
+ 
+@@ -3847,7 +3886,7 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 
+ 		// --------- detect switch option button ------//
+ 
+-		if( mouse.single_click(96, offsetY+12, 218, offsetY+54) )
++		if( mouse.single_click(MUPG_X1+96, MUPG_Y1 + offsetY+12, MUPG_X1 + 218, MUPG_Y1 + offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_BASIC )
+ 			{
+@@ -3856,7 +3895,7 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				mRefreshFlag = MGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(236, offsetY+12, 363, offsetY+54) )
++		else if( mouse.single_click(MUPG_X1 + 236, MUPG_Y1 + offsetY+12, MUPG_X1 + 363, MUPG_Y1 + offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_ADVANCED )
+ 			{
+@@ -3865,7 +3904,7 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				mRefreshFlag = MGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(380, offsetY+12, 506, offsetY+54) )
++		else if( mouse.single_click(MUPG_X1 + 380, MUPG_Y1 + offsetY+12, MUPG_X1 + 506, MUPG_Y1 + offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_ADVANCE2 )
+ 			{
+@@ -3874,7 +3913,7 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 				mRefreshFlag = MGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(523, offsetY+12, 649, offsetY+54) )
++		else if( mouse.single_click(MUPG_X1 + 523, MUPG_Y1 + offsetY+12, MUPG_X1 + 649, MUPG_Y1 + offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_GOAL )
+ 			{
+@@ -4231,6 +4270,9 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ // return 0 = cancel, 1 = ok
+ int Game::mp_select_load_option(char *fileName)
+ {
++	int MUPG_X1 = VGA_X1;
++	int MUPG_Y1 = VGA_Y1;
++
+ 	const int offsetY = 212;
+ 	char optionMode = OPTION_BASIC;
+ 	char menuTitleBitmap[] = "TOP-LMPG";
+@@ -4337,13 +4379,13 @@ int Game::mp_select_load_option(char *fileName)
+ 	for( i = 0; i < MAX_RACE; ++i )
+ 	{
+ #if(MAX_RACE == 10)
+-		raceGroup[i].create(220+(i%5)*BASIC_OPTION_X_SPACE, (i/5)*BASIC_OPTION_HEIGHT+offsetY+70,
+-			220+(i%5+1)*BASIC_OPTION_X_SPACE-1, (i/5+1)*BASIC_OPTION_HEIGHT+offsetY+70-1,
++		raceGroup[i].create(MUPG_X1 + 220+(i%5)*BASIC_OPTION_X_SPACE, MUPG_Y1 + (i/5)*BASIC_OPTION_HEIGHT+offsetY+70,
++			MUPG_X1 + 220+(i%5+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + (i/5+1)*BASIC_OPTION_HEIGHT+offsetY+70-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ 		#define Y_SHIFT_FLAG 1
+ #else
+-		raceGroup[i].create(118+i*BASIC_OPTION_X_SPACE, offsetY+93,
+-			118+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+93+BASIC_OPTION_HEIGHT-1,
++		raceGroup[i].create(MUPG_X1 + 118+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+93,
++			MUPG_X1 + 118+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+93+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ 		#define Y_SHIFT_FLAG 0
+ #endif
+@@ -4359,8 +4401,8 @@ int Game::mp_select_load_option(char *fileName)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		colorGroup[i].create(195+i*COLOR_OPTION_X_SPACE, offsetY+139+Y_SHIFT,
+-			195+(i+1)*COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		colorGroup[i].create(MUPG_X1 + 195+i*COLOR_OPTION_X_SPACE, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 195+(i+1)*COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&colorGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -4374,11 +4416,11 @@ int Game::mp_select_load_option(char *fileName)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		aiNationInc.create(595, offsetY+139+Y_SHIFT, 
+-			595+COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationInc.create(MUPG_X1 + 595, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 595+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, +1) );
+-		aiNationDec.create(630, offsetY+139+Y_SHIFT,
+-			630+COLOR_OPTION_X_SPACE-1, offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationDec.create(MUPG_X1 + 630, MUPG_Y1 + offsetY+139+Y_SHIFT,
++			MUPG_X1 + 630+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+139+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, -1) );
+ 		#undef Y_SHIFT
+ 	}
+@@ -4393,8 +4435,8 @@ int Game::mp_select_load_option(char *fileName)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		diffGroup[i].create( 205+i*BASIC_OPTION_X_SPACE, offsetY+184+Y_SHIFT,
+-			205+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+184+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		diffGroup[i].create(MUPG_X1 + 205+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+184+Y_SHIFT,
++			MUPG_X1 + 205+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+184+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&diffGroup, i), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -4409,8 +4451,8 @@ int Game::mp_select_load_option(char *fileName)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		terrainGroup[i].create(166+i*BASIC_OPTION_X_SPACE, offsetY+248+Y_SHIFT, 
+-			166+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		terrainGroup[i].create(MUPG_X1 + 166+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+248+Y_SHIFT,
++			MUPG_X1 + 166+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&terrainGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -4425,14 +4467,14 @@ int Game::mp_select_load_option(char *fileName)
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		landGroup[i].create(439+i*BASIC_OPTION_X_SPACE, offsetY+248+Y_SHIFT,
+-			439+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		landGroup[i].create(MUPG_X1 + 439+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+248+Y_SHIFT,
++			MUPG_X1 + 439+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+248+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&landGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+ 
+ 	GetA messageField;
+-	messageField.init( 190, 116, 700, typingMsg.content,
++	messageField.init(MUPG_X1 + 190, MUPG_Y1 + 116, MUPG_X1 + 700, typingMsg.content,
+ 		MpStructChatMsg::MSG_LENGTH, &font_san, 0, 1);
+ 	
+ 	// ###### begin Gilbert 25/10 #######//
+@@ -4441,13 +4483,13 @@ int Game::mp_select_load_option(char *fileName)
+ 	MpStructSeedStr msgSeedStr(info.random_seed);
+ 	GetA mapIdField;
+ #if(defined(SPANISH))
+-	#define MAPID_X1 588
++	#define MAPID_X1 MUPG_X1+588
+ #elif(defined(FRENCH))
+-	#define MAPID_X1 578
++	#define MAPID_X1 MUPG_X1+578
+ #else
+-	#define MAPID_X1 564
++	#define MAPID_X1 MUPG_X1+564
+ #endif
+-	mapIdField.init( MAPID_X1, offsetY+83, 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
++	mapIdField.init( MAPID_X1, MUPG_Y1 + offsetY+83, MUPG_X1 + 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
+ #undef MAPID_X1
+ 	// ###### end Gilbert 25/10 #######//
+ 
+@@ -4456,8 +4498,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup exploreGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		exploreGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+74, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+74+BASIC_OPTION_HEIGHT-1,
++		exploreGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+74,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+74+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&exploreGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4466,8 +4508,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup fogGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		fogGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+106, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+106+BASIC_OPTION_HEIGHT-1,
++		fogGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+106,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+106+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&fogGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4476,8 +4518,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup treasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		treasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+138,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+138+BASIC_OPTION_HEIGHT-1,
++		treasureGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+138,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+138+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&treasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -4486,8 +4528,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup aiTreasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiTreasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+170,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+170+BASIC_OPTION_HEIGHT-1,
++		aiTreasureGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+170,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiTreasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -4496,8 +4538,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup aiAggressiveGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiAggressiveGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+202, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+202+BASIC_OPTION_HEIGHT-1,
++		aiAggressiveGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+202,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiAggressiveGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -4506,8 +4548,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup monsterGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		monsterGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+234, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+234+BASIC_OPTION_HEIGHT-1,
++		monsterGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+234,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&monsterGroup, i), 0, 0);
+ 	}
+ 
+@@ -4516,8 +4558,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup randomStartUpGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		randomStartUpGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+266, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+266+BASIC_OPTION_HEIGHT-1,
++		randomStartUpGroup[i].create(MUPG_X1 + 335+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+266,
++			MUPG_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomStartUpGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4525,10 +4567,10 @@ int Game::mp_select_load_option(char *fileName)
+ 
+ 	ButtonCustom rawSiteInc, rawSiteDec;
+ 	rawSiteInc.create( 358, offsetY+72, 
+-		358+COLOR_OPTION_X_SPACE-1, offsetY+72+COLOR_OPTION_HEIGHT-1,
++		MUPG_X1 + 358+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+72+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+ 	rawSiteDec.create( 393, offsetY+72, 
+-		393+COLOR_OPTION_X_SPACE-1, offsetY+72+COLOR_OPTION_HEIGHT-1,
++		MUPG_X1 + 393+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+72+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+ 
+ 	// --------- initialize start_up_has_mine_nearby button group --------//
+@@ -4536,8 +4578,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup nearRawGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nearRawGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+104,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+104+BASIC_OPTION_HEIGHT-1,
++		nearRawGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+104,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+104+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nearRawGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4548,8 +4590,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup townStartGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townStartGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+136, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+136+BASIC_OPTION_HEIGHT-1,
++		townStartGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+136,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+136+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townStartGroup, startTownArray[i]), 0, 0);
+ 	}
+ 
+@@ -4558,8 +4600,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup townResistGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townResistGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+168, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+168+BASIC_OPTION_HEIGHT-1,
++		townResistGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+168,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+168+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townResistGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -4568,8 +4610,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup townEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		townEmergeGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+200,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+200+BASIC_OPTION_HEIGHT-1,
++		townEmergeGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+200,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+200+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4578,8 +4620,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup nationEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nationEmergeGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+232,
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+232+BASIC_OPTION_HEIGHT-1,
++		nationEmergeGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+232,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+232+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nationEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -4588,8 +4630,8 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustomGroup randomEventGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		randomEventGroup[i].create(322+i*BASIC_OPTION_X_SPACE, offsetY+264, 
+-			322+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+264+BASIC_OPTION_HEIGHT-1,
++		randomEventGroup[i].create(MUPG_X1 + 322+i*BASIC_OPTION_X_SPACE, MUPG_Y1 + offsetY+264,
++			MUPG_X1 + 322+(i+1)*BASIC_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+264+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomEventGroup, i), 0, 0);
+ 	}
+ 
+@@ -4599,55 +4641,55 @@ int Game::mp_select_load_option(char *fileName)
+ 	ButtonCustom clearEnemyButton, clearMonsterButton, enoughPeopleButton, enoughIncomeButton, enoughScoreButton, timeLimitButton;
+ 	ButtonCustom peopleInc, peopleDec, incomeInc, incomeDec, scoreInc, scoreDec, yearInc, yearDec;
+ 	
+-	clearEnemyButton.create( 209, offsetY+109, 209+19, offsetY+109+19,	// -3
++	clearEnemyButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+109, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+109+19,	// -3
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 1);
+ 	clearEnemyButton.enable_flag = 0;;
+-	clearMonsterButton.create( 209, offsetY+142, 209+19, offsetY+142+19,
++	clearMonsterButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+142, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+142+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_destroy_monster);
+-	enoughPeopleButton.create( 209, offsetY+175, 209+19, offsetY+175+19,
++	enoughPeopleButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+175, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+175+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_population_flag);
+-	enoughIncomeButton.create( 209, offsetY+208, 209+19, offsetY+208+19,
++	enoughIncomeButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+208, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+208+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_economic_score_flag);
+-	enoughScoreButton.create( 209, offsetY+241, 209+19, offsetY+241+19,
++	enoughScoreButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+241, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+241+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_total_score_flag);
+-	timeLimitButton.create( 209, offsetY+273, 209+19, offsetY+273+19,	// +29
++	timeLimitButton.create(MUPG_X1 + 209, MUPG_Y1 + offsetY+273, MUPG_X1 + 209+19, MUPG_Y1 + offsetY+273+19,	// +29
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_year_limit_flag);
+ 
+-	peopleInc.create( 524, offsetY+170,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+170+COLOR_OPTION_HEIGHT-1, 
++	peopleInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+170,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	peopleDec.create( 559, offsetY+170, 
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+170+COLOR_OPTION_HEIGHT-1, 
++	peopleDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+170,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+170+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeInc.create( 524, offsetY+202,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+202+COLOR_OPTION_HEIGHT-1, 
++	incomeInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+202,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeDec.create( 559, offsetY+202,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+202+COLOR_OPTION_HEIGHT-1, 
++	incomeDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+202,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+202+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreInc.create( 524, offsetY+234,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+234+COLOR_OPTION_HEIGHT-1, 
++	scoreInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+234,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreDec.create( 559, offsetY+234,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+234+COLOR_OPTION_HEIGHT-1, 
++	scoreDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+234,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+234+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearInc.create( 524, offsetY+266,
+-		524+COLOR_OPTION_X_SPACE-1, offsetY+266+COLOR_OPTION_HEIGHT-1, 
++	yearInc.create(MUPG_X1 + 524, MUPG_Y1 + offsetY+266,
++		MUPG_X1 + 524+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearDec.create( 559, offsetY+266,
+-		559+COLOR_OPTION_X_SPACE-1, offsetY+266+COLOR_OPTION_HEIGHT-1, 
++	yearDec.create(MUPG_X1 + 559, MUPG_Y1 + offsetY+266,
++		MUPG_X1 + 559+COLOR_OPTION_X_SPACE-1, MUPG_Y1 + offsetY+266+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+ 	// ##### end Gilbert 25/10 #######//
+ 
+ 	Button3D startButton, readyButton, returnButton;
+-	readyButton.create(120, 538, "READY-U", "READY-D", 1, 0);
+-	startButton.create(320, 538, "START-U", "START-D", 1, 0);
+-	returnButton.create(520, 538, "CANCEL-U", "CANCEL-D", 1, 0);
++	readyButton.create(MUPG_X1 + 120, MUPG_X1 + 538, "READY-U", "READY-D", 1, 0);
++	startButton.create(MUPG_X1 + 320, MUPG_X1 + 538, "START-U", "START-D", 1, 0);
++	returnButton.create(MUPG_X1 + 520, MUPG_X1 + 538, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	InfoBox info_box;
+ 
+@@ -4682,13 +4724,15 @@ int Game::mp_select_load_option(char *fileName)
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+ 					image_menu.put_to_buf( &vga_back, "MPG-BSC");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-BSC");
+ #if(MAX_RACE == 10)
+ 					// protection : image_menu.put_to_buf( &vga_back, "MPG-BSC");
+ 					// ensure the user has the release version (I_MENU.RES)
+ 					// image_menu2.put_to_buf( &vga_back, "MPG-BSC") get the real one
+-					image_menu2.put_to_buf( &vga_back, "MPG-BSC");
++// 					image_menu2.put_to_buf( &vga_back, "MPG-BSC");
++					image_menu2.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-BSC");
+ #endif
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RACE )
+@@ -4702,7 +4746,7 @@ int Game::mp_select_load_option(char *fileName)
+ 					#else
+ 						#define Y_SHIFT 0
+ 					#endif
+-					font_san.center_put(564, offsetY+144+Y_SHIFT, 564+25, offsetY+144+Y_SHIFT+21,
++					font_san.center_put(MUPG_X1 + 564, MUPG_Y1 + offsetY+144+Y_SHIFT, MUPG_X1 + 564+25, MUPG_Y1 + offsetY+144+Y_SHIFT+21,
+ 						misc.format(tempConfig.ai_nation_count), 1);
+ 					aiNationInc.paint();
+ 					aiNationDec.paint();
+@@ -4721,8 +4765,9 @@ int Game::mp_select_load_option(char *fileName)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-O1");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "MPG-O1");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-O1");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				// ###### begin Gilbert 24/10 #######//
+@@ -4750,13 +4795,14 @@ int Game::mp_select_load_option(char *fileName)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-O2");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "MPG-O2");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-O2");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RAW )
+ 				{
+-					font_san.center_put(327, offsetY+77, 327+25, offsetY+77+21,
++					font_san.center_put(MUPG_X1 + 327, MUPG_Y1 + offsetY+77, MUPG_X1 + 327+25, MUPG_Y1 + offsetY+77+21,
+ 						misc.format(tempConfig.start_up_raw_site), 1);
+ 					rawSiteInc.paint();
+ 					rawSiteDec.paint();
+@@ -4784,8 +4830,9 @@ int Game::mp_select_load_option(char *fileName)
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "MPG-GOAL");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "MPG-GOAL");
++					image_menu.put_large(&vga_back, MUPG_X1, MUPG_Y1, "MPG-GOAL");
++					image_menu.put_back(MUPG_X1 + 234, MUPG_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_CLEAR_ENEMY )
+@@ -4796,7 +4843,7 @@ int Game::mp_select_load_option(char *fileName)
+ 				if( refreshFlag & SGOPTION_ENOUGH_PEOPLE )
+ 				{
+ 					enoughPeopleButton.paint(tempConfig.goal_population_flag);
+-					font_san.center_put( 446, offsetY+176, 446+67, offsetY+176+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1 + offsetY+176, MUPG_X1 + 446+67, MUPG_Y1 + offsetY+176+21,
+ 						misc.format(tempConfig.goal_population), 1);
+ 					peopleInc.paint();
+ 					peopleDec.paint();
+@@ -4804,7 +4851,7 @@ int Game::mp_select_load_option(char *fileName)
+ 				if( refreshFlag & SGOPTION_ENOUGH_INCOME )
+ 				{
+ 					enoughIncomeButton.paint(tempConfig.goal_economic_score_flag);
+-					font_san.center_put( 446, offsetY+207, 446+67, offsetY+207+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1 + offsetY+207, MUPG_X1 + 446+67, MUPG_Y1 + offsetY+207+21,
+ 						misc.format(tempConfig.goal_economic_score), 1);
+ 					incomeInc.paint();
+ 					incomeDec.paint();
+@@ -4812,7 +4859,7 @@ int Game::mp_select_load_option(char *fileName)
+ 				if( refreshFlag & SGOPTION_ENOUGH_SCORE )
+ 				{
+ 					enoughScoreButton.paint(tempConfig.goal_total_score_flag);
+-					font_san.center_put( 446, offsetY+239, 446+67, offsetY+239+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1 + offsetY+239, MUPG_X1 + 446+67, MUPG_Y1 + offsetY+239+21,
+ 						misc.format(tempConfig.goal_total_score), 1);
+ 					scoreInc.paint();
+ 					scoreDec.paint();
+@@ -4820,7 +4867,7 @@ int Game::mp_select_load_option(char *fileName)
+ 				if( refreshFlag & SGOPTION_TIME_LIMIT )
+ 				{
+ 					timeLimitButton.paint(tempConfig.goal_year_limit_flag);
+-					font_san.center_put( 446, offsetY+271, 446+33, offsetY+271+21,
++					font_san.center_put(MUPG_X1 + 446, MUPG_Y1 + offsetY+271, MUPG_X1 + 446+33, MUPG_Y1 + offsetY+271+21,
+ 						misc.format(tempConfig.goal_year_limit), 1);
+ 					yearInc.paint();
+ 					yearDec.paint();
+@@ -4852,20 +4899,28 @@ int Game::mp_select_load_option(char *fileName)
+ 			// ------------- display incoming chat message --------//
+ 			if( mRefreshFlag & MGOPTION_IN_MESSAGE )
+ 			{
+-				vga_util.blt_buf( 101, 135, 700, 202, 0 );
+-				for( p = 1; p <= 4 && p <= messageList.size() ; ++p)
++// 				vga_util.blt_buf( 101, 135, 700, 202, 0 );
++// 				for( p = 1; p <= 4 && p <= messageList.size() ; ++p)
++// 				{
++// 					int ny = 136+(p-1)*16;
++// 					int nx = font_san.put( 102, ny, ((MpStructChatMsg *)messageList.get(p))->sender );
++// 					nx = font_san.put( nx, ny, " : ");
++// 					nx = font_san.put( nx, ny, ((MpStructChatMsg *)messageList.get(p))->content, 0, 700);
++// 				}
++				vga_util.blt_buf(MUPG_X1 + 101, MUPG_Y1 + 135, MUPG_X1 + 700, MUPG_Y1 + 202, 0);
++				for (p = 1; p <= 4 && p <= messageList.size(); ++p)
+ 				{
+-					int ny = 136+(p-1)*16;
+-					int nx = font_san.put( 102, ny, ((MpStructChatMsg *)messageList.get(p))->sender );
+-					nx = font_san.put( nx, ny, " : ");
+-					nx = font_san.put( nx, ny, ((MpStructChatMsg *)messageList.get(p))->content, 0, 700);
++					int ny = MUPG_Y1 + 136 + (p - 1) * 16;
++					int nx = font_san.put(MUPG_X1 + 102, ny, ((MpStructChatMsg *)messageList.get(p))->sender);
++					nx = font_san.put(nx, ny, " : ");
++					nx = font_san.put(nx, ny, ((MpStructChatMsg *)messageList.get(p))->content, 0, MUPG_X1 + 700);
+ 				}
+ 			}
+ 
+ 			// ------- display difficulty -------//
+ 			if( (refreshFlag & SGOPTION_DIFFICULTY) || (mRefreshFlag & MGOPTION_PLAYERS) )
+ 			{
+-				font_san.center_put( 718, offsetY+84, 774, offsetY+108, 
++				font_san.center_put(MUPG_X1 + 718, MUPG_Y1 + offsetY+84, MUPG_X1 + 774, MUPG_Y1 + offsetY+108,
+ 					misc.format(tempConfig.difficulty_rating), 1 );
+ 			}
+ 
+diff --git a/src/OGAMENCY.cpp b/src/OGAMENCY.cpp
+index 87abb5f..cdd329a 100644
+--- a/src/OGAMENCY.cpp
++++ b/src/OGAMENCY.cpp
+@@ -38,6 +38,21 @@
+ #define FRYHTAN_MAX_PAGE 3
+ #define SUB_CLASS_BUTTON_MAX 10
+ 
++#define NCY_X1 ((VGA_WIDTH >> 1) - 400)
++#define NCY_Y1 ((VGA_HEIGHT >> 1) - 300)
++
++enum {
++	BUTTON_WIDTH = 146, CLASS_BUTTON_Y_SPACING = 30, BUTTON_HEIGHT = 28,
++	SUBCLASS_TOP_BORDER = 3, BUTTON_Y_SPACING = 31, MAX_SUBBUTTON = 10
++};
++
++#define BUTTON_X			NCY_X1+14
++#define BUTTON_Y			NCY_Y1+14
++#define SUBBUTTON_X			NCY_X1+14
++#define SUBBUTTON_Y			NCY_Y1+236
++#define CLASS_BUTTON_Y		NCY_Y1+14
++#define SUBCLASS_BUTTON_Y	NCY_Y1+236
++
+ enum
+ {
+ 	ENCYC_PEOPLE=1,
+@@ -145,7 +160,8 @@ void Game::view_encyclopedia()
+ 
+ 	//---- load the interface into the back buffer ----//
+ 
+-	image_encyc.put_to_buf( &vga_back, "ENCYC" );
++	vga_back.bar(0, 0, VGA_WIDTH - 1, VGA_HEIGHT - 1, VGA_GRAY);
++	image_encyc.put_large(&vga_back, NCY_X1, NCY_Y1, "ENCYC");
+ 
+ 	//-------- hide and change mouse cursor --------//
+ 
+@@ -268,12 +284,12 @@ void Game::view_encyclopedia()
+ 
+ 		//------ detect the "Return" button -------//
+ 
+-		if( mouse.single_click(6, 552, 165, 592) )		// return button
++		if( mouse.single_click(NCY_X1+6, NCY_Y1+552, NCY_X1+165, NCY_Y1+592) )		// return button
+ 			break;
+ 
+ 		//--------- F9 to capture screen ----------//
+ 
+-		if( mouse.single_click(174, 12, 787, 587, 1) )		// right clicking on the picture to save it
++		if( mouse.single_click(NCY_X1+174, NCY_Y1+12, NCY_X1+787, NCY_Y1+587, 1) )		// right clicking on the picture to save it
+ 			sys.capture_screen();
+ 
+ 		//----------- auto slide show -------------//
+@@ -322,9 +338,6 @@ void Game::view_encyclopedia()
+ 
+ static int detect_main_class_button()
+ {
+-	enum { BUTTON_X = 14, BUTTON_Y = 14, BUTTON_WIDTH = 146, BUTTON_HEIGHT = 28 };
+-	enum { BUTTON_Y_SPACING = 30 };
+-
+ 	for( int c=1 ; c<=ENCYC_CLASS_COUNT ; c++ )
+ 	{
+ 		//if( mouse.press_area( BUTTON_X, BUTTON_Y + (c-1)*BUTTON_Y_SPACING, BUTTON_X + BUTTON_WIDTH-1,
+@@ -352,24 +365,21 @@ static int detect_main_class_button()
+ 
+ static int detect_sub_class_button(int n, int firstButton)
+ {
+-	enum { BUTTON_X = 14, BUTTON_Y = 236, BUTTON_WIDTH = 146, BUTTON_HEIGHT = 28 };
+-	enum { BUTTON_Y_SPACING = 31, MAX_BUTTON = 10 };
+-
+ 	for( int c=firstButton ; c<=n && c<=SUB_CLASS_BUTTON_MAX ; c++ )
+ 	{
+ 		//if( mouse.press_area( BUTTON_X, BUTTON_Y + (c-1)*BUTTON_Y_SPACING, BUTTON_X + BUTTON_WIDTH-1,
+ 		//	BUTTON_Y + c*BUTTON_Y_SPACING-1) )
+-		if( mouse.single_click( BUTTON_X, BUTTON_Y + (c-1)*BUTTON_Y_SPACING, BUTTON_X + BUTTON_WIDTH-1,
+-			BUTTON_Y + c*BUTTON_Y_SPACING-1) )
++		if( mouse.single_click( SUBBUTTON_X, SUBBUTTON_Y + (c-1)*BUTTON_Y_SPACING, SUBBUTTON_X + BUTTON_WIDTH-1,
++			SUBBUTTON_Y + c*BUTTON_Y_SPACING-1) )
+ 		{
+-			// int subClassId = sub_class_id_array[main_class_id-1];
++			int subClassId = sub_class_id_array[main_class_id-1];
+ 
+-			// vga_util.blt_buf( BUTTON_X, BUTTON_Y + (subClassId-1)*BUTTON_Y_SPACING, BUTTON_X + BUTTON_WIDTH-1,
+-			// BUTTON_Y + subClassId*BUTTON_Y_SPACING-1, 0);
++			vga_util.blt_buf( BUTTON_X, BUTTON_Y + (subClassId-1)*BUTTON_Y_SPACING, BUTTON_X + BUTTON_WIDTH-1,
++			BUTTON_Y + subClassId*BUTTON_Y_SPACING-1, 0);
+ 
+ 			// ###### begin Gilbert 22/9 #######//
+ 			// image_encyc.put_front(BUTTON_X-2, BUTTON_Y + (c-1)*BUTTON_Y_SPACING-2, "B_DOWN");
+-			image_encyc.put_front(BUTTON_X, BUTTON_Y + (c-1)*BUTTON_Y_SPACING, "B_DOWN");
++			image_encyc.put_front(SUBBUTTON_X, SUBBUTTON_Y + (c-1)*BUTTON_Y_SPACING, "B_DOWN");
+ 			// ###### end Gilbert 22/9 #######//
+ 			return c;
+ 		}
+@@ -384,15 +394,12 @@ static int detect_sub_class_button(int n, int firstButton)
+ //
+ static void disp_class_buttons()
+ {
+-	enum { BUTTON_X=14, BUTTON_WIDTH=146, CLASS_BUTTON_Y=14, CLASS_BUTTON_Y_SPACING=30, 
+-		SUBCLASS_BUTTON_Y=236, SUBCLASS_TOP_BORDER=3, BUTTON_Y_SPACING=31 };
+-
+ 	int subClassId = sub_class_id_array[main_class_id-1];
+ 
+ 	if( main_class_id != ENCYC_FRYHTANS )
+ 	{
+-		vga_back.put_bitmap(12, SUBCLASS_BUTTON_Y-SUBCLASS_TOP_BORDER,
+-			image_encyc.get_ptr(button_name_array[main_class_id-1]) );
++		vga_back.put_bitmap(NCY_X1+12, SUBCLASS_BUTTON_Y-SUBCLASS_TOP_BORDER,
++			image_encyc.get_ptr(button_name_array[main_class_id-1]) );		
+ 	}
+ 	else
+ 	{
+@@ -402,21 +409,21 @@ static void disp_class_buttons()
+ 			sub_class_id_array[main_class_id-1]-1 >= monster_page_index[monsterSubClass];
+ 			++monsterSubClass);
+ 		err_when( monsterSubClass > FRYHTAN_MAX_PAGE );
+-		vga_back.put_bitmap(12, SUBCLASS_BUTTON_Y-SUBCLASS_TOP_BORDER, 
++		vga_back.put_bitmap(NCY_X1+12, SUBCLASS_BUTTON_Y-SUBCLASS_TOP_BORDER,
+ 			image_encyc.get_ptr(monster_button_name_array[monsterSubClass-1]) );
+ 
+ 		// modify subClassId
+ 		subClassId -= monster_page_index[monsterSubClass-1];
+ 	}
+ 
+-	vga_util.blt_buf( BUTTON_X, 14, BUTTON_X+BUTTON_WIDTH-1, VGA_HEIGHT-40, 0 );
++	vga_util.blt_buf( NCY_X1, NCY_Y1, BUTTON_X+BUTTON_WIDTH-1, VGA_HEIGHT-40, 0 );
+ 
+-	int y=CLASS_BUTTON_Y;
++	int y = CLASS_BUTTON_Y;
+ 	// ###### begin Gilbert 22/9 #######//
+ 	image_encyc.put_front( BUTTON_X, y + (main_class_id-1)*CLASS_BUTTON_Y_SPACING, "B_DOWN");
+ 	// ###### end Gilbert 22/9 #######//
+ 
+-	y=SUBCLASS_BUTTON_Y;
++	y = SUBCLASS_BUTTON_Y;
+ 	// #### begin Gilbert 22/9 #######//
+ 	image_encyc.put_front( BUTTON_X, y + (subClassId-1)*BUTTON_Y_SPACING, "B_DOWN");
+ 	// #### end Gilbert 22/9 #######//
+@@ -585,10 +592,10 @@ static int disp_picture( int selClass, int selSubClass, int firstDisp)
+ 		filename2[0] && misc.is_file_exist(filename2) && pictFile.file_open(filename2,0) && (palNamePtr = palname2) ||
+ 		filename[0] && misc.is_file_exist(filename) && pictFile.file_open(filename,0) && (palNamePtr = palname) )
+ 	{
+-		vga_back.put_large_bitmap(174, 12, &pictFile);
++		vga_back.put_large_bitmap(NCY_X1 + 174, NCY_Y1 + 12, &pictFile);
+ 
+ 		if( !firstDisp )
+-			vga_front.bar(174,12,787,587, 0x00);		// wipe the picture screen
++			vga_front.bar(NCY_X1 + 174, NCY_Y1 + 12, NCY_X1 + 787, NCY_X1 + 587, 0x00);		// wipe the picture screen
+ 
+ 		if( palNamePtr && misc.is_file_exist(palNamePtr) )
+ 		{
+@@ -597,7 +604,7 @@ static int disp_picture( int selClass, int selSubClass, int firstDisp)
+ 		}
+ 
+ 		if( !firstDisp )
+-			vga_util.blt_buf(174,12,787,587, 0);
++			vga_util.blt_buf(NCY_X1 + 174, NCY_Y1 + 12, NCY_X1 + 787, NCY_X1 + 587, 0);
+ 
+ 		return 1;
+ 	}
+diff --git a/src/OGAMEND.cpp b/src/OGAMEND.cpp
+index 5a4d047..8fbb00e 100644
+--- a/src/OGAMEND.cpp
++++ b/src/OGAMEND.cpp
+@@ -48,6 +48,10 @@
+ #include "gettext.h"
+ 
+ 
++#define TXT_X1 ((VGA_WIDTH >> 1) - 280)
++#define TXT_Y1 ((VGA_HEIGHT >> 1) - 184)
++#define BG_X1  ((VGA_WIDTH >> 1) - 400)
++#define BG_Y1  ((VGA_HEIGHT >> 1) - 300)
+ 
+ //-------- Declare static vars & functions ---------//
+ 
+@@ -139,7 +143,7 @@ void Game::game_end(int winNationRecno, int playerDestroyed, int surrenderToNati
+ 		else
+ 			fileName = "LOSEGAME";
+ 
+-		vga_util.disp_image_file(fileName);
++		vga_util.disp_image_file(fileName, BG_X1, BG_Y1);
+ 
+ 		music.play(songId, sys.cdrom_drive ? MUSIC_CD_THEN_WAV : 0);
+ 		mouse.wait_press(60);		// 60 seconds to time out
+@@ -151,7 +155,7 @@ void Game::game_end(int winNationRecno, int playerDestroyed, int surrenderToNati
+ 
+ 	//------- display the statistic -------//
+ 
+-	vga_util.disp_image_file("RESULTS");
++	vga_util.disp_image_file("RESULTS", BG_X1, BG_Y1);
+ 
+ 	if( winNationRecno )
+ 	{
+@@ -172,7 +176,7 @@ void Game::game_end(int winNationRecno, int playerDestroyed, int surrenderToNati
+ 
+ 	//-------- display ranking and score ----------//
+ 
+-	vga_util.disp_image_file("RESULTS");
++	vga_util.disp_image_file("RESULTS", BG_X1, BG_Y1);
+ 
+ 	info.set_rank_data(0);		// count all nations, not only those that have contact with the player
+ 
+@@ -361,14 +365,16 @@ static void disp_goal_str(int winNationRecno)
+ 
+ 	//-----------------------------------//
+ 
+-	int y=30;
+-	int dispLines, totalLines;
++	int y=40;
++	if( winNationRecno != nation_array.player_recno )
++	{
++		font_bible.center_put(BG_X1, BG_Y1 + 30, VGA_WIDTH-1, BG_Y1 + 60, _("You Have Lost the Game !") );
++		y=60;
++	}
+ 
+-	font_bible.count_line(0, y, VGA_WIDTH-1, y+90, str, 10, dispLines, totalLines);
+-	if( totalLines < 3 )
+-		y=40;
++	font_bible.center_put(BG_X1, BG_Y1 + y   , VGA_WIDTH-1, BG_Y1+y+30, str  );
++	font_bible.center_put(BG_X1, BG_Y1 + y+30, VGA_WIDTH-1, BG_Y1+y+60, str2 );
+ 
+-	font_bible.put_paragraph(0, y, VGA_WIDTH-1, y+90, str, 10, 1, 1, Font::CENTER_JUSTIFY);
+ }
+ //----------- End of static function disp_goal_str -----------//
+ 
+@@ -396,7 +402,7 @@ static void disp_losing_str(int surrenderToNationRecno)
+ 		str = _("Your Kingdom has Gone Down to Ignominious Defeat !");
+ 	}
+ 
+-	font_bible.center_put(0, 0, VGA_WIDTH-1, 139, str );
++	font_bible.center_put(BG_X1, BG_Y1, VGA_WIDTH-1, BG_Y1 + 139, str );
+ }
+ //----------- End of static function disp_losing_str -----------//
+ 
+@@ -410,7 +416,7 @@ static void disp_retire_str()
+ 	// TRANSLATORS: You Retired on <Date>.
+ 	snprintf(str, MAX_STR_LEN+1, _("You Retired on %s."), date.date_str( info.game_date ));
+ 
+-	font_bible.center_put(0, 0, VGA_WIDTH-1, 139, str );
++	font_bible.center_put(BG_X1, BG_Y1, VGA_WIDTH - 1, BG_Y1 + 139, str);
+ }
+ //----------- End of static function disp_retire_str -----------//
+ 
+@@ -419,7 +425,7 @@ static void disp_retire_str()
+ //
+ static void disp_stat()
+ {
+-	int y=140;
++	int y = BG_Y1 + 140;
+ 
+ 	Nation* nationPtr = ~nation_array;
+ 
+@@ -451,8 +457,8 @@ static void disp_stat()
+ //
+ static void put_stat(int y, const char* desStr, const char* dispStr)
+ {
+-	font_bible.put( 140, y, desStr );
+-	font_bible.put( 570, y, dispStr );
++	font_bible.put(BG_X1 + 140, y, desStr );
++	font_bible.put(BG_X1 + 570, y, dispStr );
+ }
+ //----------- End of static function put_stat -----------//
+ 
+@@ -461,8 +467,8 @@ static void put_stat(int y, const char* desStr, const char* dispStr)
+ //
+ static void put_stat(int y, const char* desStr, int dispValue)
+ {
+-	font_bible.put( 140, y, desStr );
+-	font_bible.put( 570, y, misc.format(dispValue) );
++	font_bible.put(BG_X1 + 140, y, desStr );
++	font_bible.put(BG_X1 + 570, y, misc.format(dispValue) );
+ }
+ //----------- End of static function put_stat -----------//
+ 
+@@ -473,7 +479,7 @@ static void disp_ranking()
+ {
+ 	//--------- display descriptions ---------//
+ 
+-	int x=20, y=76;
++	int x= BG_X1+20, y= BG_Y1+76;
+ 
+ 	font_bible.put( x+20 , y+7, _("Kingdom") );
+ 	font_bible.put( x+260, y+7, _("Population") );
+@@ -481,7 +487,15 @@ static void disp_ranking()
+ 	font_bible.put( x+470, y+7, _("Economy") );
+ 	font_bible.put( x+562, y+7, _("Reputation") );
+ 
+-	put_heading( Font::LEFT_JUSTIFY, x+670, y, x+760, y+42, _("Fryhtan Battling") );
++#if(defined(SPANISH))
++	font_bible.put( x+670, y   , "Lucha" );
++	font_bible.put( x+670, y+14, "Fryhtan" );
++#else
++	// TRANSLATORS: Part of "Fryhtan Battling"
++	font_bible.put( x+670, y   , _("Fryhtan") );
++	// TRANSLATORS: Part of "Fryhtan Battling"
++	font_bible.put( x+670, y+14, _("Battling") );
++#endif
+ 
+ 	//--------- display rankings -----------//
+ 
+@@ -504,7 +518,7 @@ static void put_ranking(int y, int nationRecno)
+ {
+ 	Nation* nationPtr = nation_array[nationRecno];
+ 
+-	int x=20;
++	int x= BG_X1+20;
+ 
+ 	nationPtr->disp_nation_color(x, y+5);
+ 
+@@ -525,7 +539,7 @@ static void put_ranking(int y, int nationRecno)
+ //
+ static int disp_score(int winFlag)
+ {
+-	int x=200, y=360;
++	int x= BG_X1+200, y= BG_Y1+360;
+ 
+ 	static const char* rankStrArray[] =
+ 	{ N_("Population Score"), N_("Military Score"), N_("Economic Score"),
+diff --git a/src/OGAMHALL.cpp b/src/OGAMHALL.cpp
+index 7f9d034..133ff8d 100644
+--- a/src/OGAMHALL.cpp
++++ b/src/OGAMHALL.cpp
+@@ -147,12 +147,14 @@ int HallOfFame::write_hall_of_fame()
+ //
+ void HallOfFame::disp_hall_of_fame()
+ {
+-	vga_util.disp_image_file("HALLFAME");
+-
+-	//---------- display hall of fame records ------------//
++	vga_back.bar(0, 0, VGA_WIDTH - 1, VGA_HEIGHT - 1, V_BLACK);
+ 
+ 	int i;
+-	int x=120, y=116;
++	int x = (VGA_WIDTH >> 1) - 280, y = (VGA_HEIGHT >> 1) - 184;
++	int BG_X1 = (VGA_WIDTH >> 1) - 400, BG_Y1 = (VGA_HEIGHT >> 1) - 300;
++	vga_util.disp_image_file("HALLFAME", BG_X1, BG_Y1);
++
++	//---------- display hall of fame records ------------//
+ 
+ 	for( i=0 ; i<HALL_FAME_NUM ; i++, y+=76 )
+ 	{
+diff --git a/src/OGAMMAIN.cpp b/src/OGAMMAIN.cpp
+index 5f143a1..9c53390 100644
+--- a/src/OGAMMAIN.cpp
++++ b/src/OGAMMAIN.cpp
+@@ -54,7 +54,8 @@ struct OptionInfo
+ 
+ // -------- define constant ----------//
+ 
+-enum { SWORD1_X = 258, SWORD1_Y = 194 };
++#define SWORD1_X ((VGA_WIDTH >> 1) - 142)
++#define SWORD1_Y ((VGA_HEIGHT >> 1) - 106)
+ 
+ //---------- Begin of function Game::main_menu ----------//
+ //
+@@ -62,6 +63,11 @@ void Game::main_menu()
+ {
+ 	enum { MAIN_OPTION_COUNT = 6 };
+ 
++	int s1x1 = (VGA_WIDTH >> 1) - 142;
++	int s1y1 = (VGA_HEIGHT >> 1) - 106;
++	int s1x = SWORD1_X;
++	int s1y = SWORD1_Y;
++
+ 	static OptionInfo main_option_array[MAIN_OPTION_COUNT] =
+ 	{
+ 		{ 6+SWORD1_X,  11+SWORD1_Y, 282+SWORD1_X ,  63+SWORD1_Y },
+@@ -116,8 +122,12 @@ void Game::main_menu()
+ 		{
+ 			mouse_cursor.set_icon(CURSOR_NORMAL);
+ 
+-			image_interface.put_to_buf( &vga_back, "M_MAIN" );
+-
++			// draw black background
++			vga_back.bar(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 0);
++			// draw M_MAIN at original size (800x600), centered
++			int drawX = (VGA_WIDTH - 800) / 2;
++			int drawY = (VGA_HEIGHT - 600) / 2;
++			image_interface.put_large(&vga_back, drawX, drawY, (char*)"M_MAIN", 0);
+ 			vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1);	// blt the main menu screen from the back buffer to the front buffer
+ 
+ 			disp_version();
+@@ -153,7 +163,7 @@ void Game::main_menu()
+ 				{
+ 					mouse.hide_area(main_option_array[i].x1, main_option_array[i].y1,
+ 						main_option_array[i].x2, main_option_array[i].y2);
+-					vga_front.put_bitmap_area(SWORD1_X, SWORD1_Y, 
++					vga_front.put_bitmap_area(SWORD1_X, SWORD1_Y,
+ 						main_option_flag[i] ? menuBitmap : darkBitmap,
+ 						main_option_array[i].x1 - SWORD1_X, main_option_array[i].y1 - SWORD1_Y,
+ 						main_option_array[i].x2 - SWORD1_X, main_option_array[i].y2 - SWORD1_Y);
+@@ -465,7 +475,12 @@ void Game::single_player_menu()
+ 
+ 		if( refreshFlag )
+ 		{
+-			image_interface.put_to_buf( &vga_back, "M_MAIN" );
++			// draw black background
++			vga_back.bar(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 0);
++			// draw M_MAIN at original size (800x600), centered
++			int drawX = (VGA_WIDTH - 800) / 2;
++			int drawY = (VGA_HEIGHT - 600) / 2;
++			image_interface.put_large(&vga_back, drawX, drawY, (char*)"M_MAIN", 0);
+ 
+ 			vga_util.blt_buf(0,0,VGA_WIDTH-1, VGA_HEIGHT-1);
+ 
+@@ -722,7 +737,12 @@ void Game::multi_player_menu(int lobbied, char *game_host)
+ 
+ 		if( refreshFlag )
+ 		{
+-			image_interface.put_to_buf( &vga_back, "M_MAIN" );
++			// draw black background
++			vga_back.bar(0, 0, VGA_WIDTH-1, VGA_HEIGHT-1, 0);
++			// draw M_MAIN at original size (800x600), centered
++			int drawX = (VGA_WIDTH - 800) / 2;
++			int drawY = (VGA_HEIGHT - 600) / 2;
++			image_interface.put_large(&vga_back, drawX, drawY, (char*)"M_MAIN", 0);
+ 
+ 			vga_util.blt_buf(0,0,VGA_WIDTH-1, VGA_HEIGHT-1);
+ 
+diff --git a/src/OGAMSCE2.cpp b/src/OGAMSCE2.cpp
+index 82861a7..5242b1b 100644
+--- a/src/OGAMSCE2.cpp
++++ b/src/OGAMSCE2.cpp
+@@ -52,10 +52,10 @@ static void disp_scroll_bar_func(SlideVBar *scroll, int);
+ enum CHECKBOX_STATE { UNCHECKED = 0, PART_CHECKED = 1, CHECKED = 2 };
+ static void draw_checkbox(int x, int y, CHECKBOX_STATE checked);
+ 
+-enum { TUTOR_MENU_X1 = 0,
+-		 TUTOR_MENU_Y1 = 0,
+-		 TUTOR_MENU_WIDTH = VGA_WIDTH,
+-		 TUTOR_MENU_HEIGHT = VGA_HEIGHT };
++#define TUTOR_MENU_X1 ((VGA_WIDTH>>1)-400)
++#define TUTOR_MENU_Y1 ((VGA_HEIGHT>>1)-300)
++#define TUTOR_MENU_WIDTH 400
++#define TUTOR_MENU_HEIGHT 300
+ 
+ enum { SCROLL_X1 = 757,
+ 		 SCROLL_Y1 = 352,
+diff --git a/src/OGAMSING.cpp b/src/OGAMSING.cpp
+index ae87cad..40e6c12 100644
+--- a/src/OGAMSING.cpp
++++ b/src/OGAMSING.cpp
+@@ -151,6 +151,10 @@ static void disp_virtual_tick(ButtonCustom *, int);
+ 
+ static int select_option()
+ {
++	int SING_X1 = VGA_X1;
++	int SING_Y1 = VGA_Y1;
++	int SING_XX1 = VGA_X1 + 80;
++	int SING_YY1 = VGA_Y1 + 124;
+ 	const int offsetY = 124;
+ 	char optionMode = OPTION_BASIC;
+ 	char menuTitleBitmap[] = "TOP-NSPG";
+@@ -175,14 +179,14 @@ static int select_option()
+ 	for( i = 0; i < MAX_RACE; ++i )
+ 	{
+ #if(MAX_RACE == 10)
+-		raceGroup[i].create(222+(i%5)*BASIC_OPTION_X_SPACE, offsetY+81+(i/5)*BASIC_OPTION_HEIGHT,
+-			222+(i%5+1)*BASIC_OPTION_X_SPACE-1, offsetY+81+(i/5+1)*BASIC_OPTION_HEIGHT-1,
++		raceGroup[i].create(SING_X1+222+(i%5)*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+81+(i/5)*BASIC_OPTION_HEIGHT,
++			SING_X1 + 222+(i%5+1)*BASIC_OPTION_X_SPACE-1, SING_Y1 + offsetY+81+(i/5+1)*BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ 
+ #define Y_SHIFT_FLAG 1
+ #else
+-		raceGroup[i].create(118+i*BASIC_OPTION_X_SPACE, offsetY+103,
+-			118+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+103+BASIC_OPTION_HEIGHT-1,
++		raceGroup[i].create(SING_X1+118+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+103,
++			SING_X1 + 118+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1 + offsetY+103+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&raceGroup, race_table[i]), 0, 0);
+ #define Y_SHIFT_FLAG 0
+ #endif
+@@ -198,8 +202,8 @@ static int select_option()
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		colorGroup[i].create(195+i*COLOR_OPTION_X_SPACE, offsetY+149+Y_SHIFT,
+-			195+(i+1)*COLOR_OPTION_X_SPACE-1, offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		colorGroup[i].create(SING_X1+195+i*COLOR_OPTION_X_SPACE, SING_Y1 + offsetY+149+Y_SHIFT,
++			SING_X1 + 195+(i+1)*COLOR_OPTION_X_SPACE-1, SING_Y1 + offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&colorGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -213,11 +217,11 @@ static int select_option()
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		aiNationInc.create(595, offsetY+149+Y_SHIFT, 
+-			595+COLOR_OPTION_X_SPACE-1, offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationInc.create(SING_X1 + 595, SING_Y1 + offsetY+149+Y_SHIFT,
++			SING_X1 + 595+COLOR_OPTION_X_SPACE-1, SING_Y1 + offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, +1) );
+-		aiNationDec.create(630, offsetY+149+Y_SHIFT, 
+-			630+COLOR_OPTION_X_SPACE-1, offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
++		aiNationDec.create(SING_X1 + 630, SING_Y1 + offsetY+149+Y_SHIFT,
++			SING_X1 + 630+COLOR_OPTION_X_SPACE-1, SING_Y1 + offsetY+149+Y_SHIFT+COLOR_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, -1) );
+ 		#undef Y_SHIFT
+ 	}
+@@ -232,8 +236,8 @@ static int select_option()
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		diffGroup[i].create( 205+i*BASIC_OPTION_X_SPACE, offsetY+194+Y_SHIFT,
+-			205+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+194+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		diffGroup[i].create(SING_X1 + 205+i*BASIC_OPTION_X_SPACE, SING_Y1 + offsetY+194+Y_SHIFT,
++			SING_X1 + 205+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1 + offsetY+194+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&diffGroup, i), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -248,8 +252,8 @@ static int select_option()
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		terrainGroup[i].create(168+i*BASIC_OPTION_X_SPACE, offsetY+258+Y_SHIFT, 
+-			168+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+258+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		terrainGroup[i].create(SING_X1 + 168+i*BASIC_OPTION_X_SPACE, SING_Y1 + offsetY+258+Y_SHIFT,
++			SING_X1 + 168+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1 + offsetY+258+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&terrainGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -264,8 +268,8 @@ static int select_option()
+ 		#else
+ 			#define Y_SHIFT 0
+ 		#endif
+-		landGroup[i].create(439+i*BASIC_OPTION_X_SPACE, offsetY+258+Y_SHIFT, 
+-			439+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+258+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
++		landGroup[i].create(SING_X1 + 439+i*BASIC_OPTION_X_SPACE, SING_Y1 + offsetY+258+Y_SHIFT,
++			SING_X1 + 439+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1 + offsetY+258+Y_SHIFT+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&landGroup, i+1), 0, 0);
+ 		#undef Y_SHIFT
+ 	}
+@@ -274,7 +278,7 @@ static int select_option()
+ 	// ####### begin Gilbert 3/11 #######//
+ //	playerNameField.init( 318, offsetY+327, 690, tempConfig.player_name,
+ //		HUMAN_NAME_LEN, &font_san, 0, 1);
+-	playerNameField.init( 318, offsetY+322, 690, tempConfig.player_name,
++	playerNameField.init(SING_X1 + 318, SING_Y1 + offsetY+322, SING_X1 + 690, tempConfig.player_name,
+ 		HUMAN_NAME_LEN, &font_bard, 0, 1);
+ 	// ####### end Gilbert 3/11 #######//
+ 
+@@ -292,15 +296,15 @@ static int select_option()
+ #else
+ 	#define MAPID_X1 564
+ #endif
+-	mapIdField.init( MAPID_X1, offsetY+112, 700, mapIdStr, mapIdSize, &font_san, 0, 1);
++	mapIdField.init(SING_X1 + MAPID_X1, SING_Y1+offsetY+112, SING_X1 + 700, mapIdStr, mapIdSize, &font_san, 0, 1);
+ #undef MAPID_X1
+ 	// --------- initialize explore_whole_map button group -------//
+ 
+ 	ButtonCustomGroup exploreGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		exploreGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+103, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+103+BASIC_OPTION_HEIGHT-1,
++		exploreGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+103,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+103+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&exploreGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -309,8 +313,8 @@ static int select_option()
+ 	ButtonCustomGroup fogGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		fogGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+135, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+135+BASIC_OPTION_HEIGHT-1,
++		fogGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+135,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+135+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&fogGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -319,8 +323,8 @@ static int select_option()
+ 	ButtonCustomGroup treasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		treasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+167,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+167+BASIC_OPTION_HEIGHT-1,
++		treasureGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+167,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+167+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&treasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -329,8 +333,8 @@ static int select_option()
+ 	ButtonCustomGroup aiTreasureGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiTreasureGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+199,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+199+BASIC_OPTION_HEIGHT-1,
++		aiTreasureGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+199,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+199+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiTreasureGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -339,8 +343,8 @@ static int select_option()
+ 	ButtonCustomGroup aiAggressiveGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		aiAggressiveGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+231, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+231+BASIC_OPTION_HEIGHT-1,
++		aiAggressiveGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+231,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+231+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&aiAggressiveGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -349,8 +353,8 @@ static int select_option()
+ 	ButtonCustomGroup monsterGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		monsterGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+263,
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+263+BASIC_OPTION_HEIGHT-1,
++		monsterGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+263,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+263+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&monsterGroup, i), 0, 0);
+ 	}
+ 
+@@ -359,19 +363,19 @@ static int select_option()
+ 	ButtonCustomGroup randomStartUpGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		randomStartUpGroup[i].create(335+i*BASIC_OPTION_X_SPACE, offsetY+295, 
+-			335+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+295+BASIC_OPTION_HEIGHT-1,
++		randomStartUpGroup[i].create(SING_X1 + 335+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+295,
++			SING_X1 + 335+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+295+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomStartUpGroup, 1-i), 0, 0);
+ 	}
+ 
+ 	//  -------- initialize start_up_raw_site buttons --------- //
+ 
+ 	ButtonCustom rawSiteInc, rawSiteDec;
+-	rawSiteInc.create( 368, offsetY+100, 
+-		368+COLOR_OPTION_X_SPACE-1, offsetY+100+COLOR_OPTION_HEIGHT-1,
++	rawSiteInc.create(SING_X1 + 368, SING_Y1+offsetY+100,
++		SING_X1 + 368+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+100+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+-	rawSiteDec.create( 403, offsetY+100, 
+-		403+COLOR_OPTION_X_SPACE-1, offsetY+100+COLOR_OPTION_HEIGHT-1,
++	rawSiteDec.create(SING_X1 + 403, SING_Y1+offsetY+100,
++		SING_X1 + 403+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+100+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL,0));
+ 
+ 	// --------- initialize start_up_has_mine_nearby button group --------//
+@@ -379,8 +383,8 @@ static int select_option()
+ 	ButtonCustomGroup nearRawGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nearRawGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+132,
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+132+BASIC_OPTION_HEIGHT-1,
++		nearRawGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+132,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+132+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nearRawGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -391,8 +395,8 @@ static int select_option()
+ 	ButtonCustomGroup townStartGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townStartGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+164, 
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+164+BASIC_OPTION_HEIGHT-1,
++		townStartGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+164,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+164+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townStartGroup, startTownArray[i]), 0, 0);
+ 	}
+ 
+@@ -401,8 +405,8 @@ static int select_option()
+ 	ButtonCustomGroup townResistGroup(3);
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		townResistGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+196, 
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+196+BASIC_OPTION_HEIGHT-1,
++		townResistGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+196,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+196+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townResistGroup, i+1), 0, 0);
+ 	}
+ 
+@@ -411,8 +415,8 @@ static int select_option()
+ 	ButtonCustomGroup townEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		townEmergeGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+228,
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+228+BASIC_OPTION_HEIGHT-1,
++		townEmergeGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+228,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+228+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&townEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -421,8 +425,8 @@ static int select_option()
+ 	ButtonCustomGroup nationEmergeGroup(2);
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		nationEmergeGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+260, 
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+260+BASIC_OPTION_HEIGHT-1,
++		nationEmergeGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+260,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+260+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&nationEmergeGroup, 1-i), 0, 0);
+ 	}
+ 
+@@ -431,8 +435,8 @@ static int select_option()
+ 	ButtonCustomGroup randomEventGroup(4);
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		randomEventGroup[i].create(332+i*BASIC_OPTION_X_SPACE, offsetY+292, 
+-			332+(i+1)*BASIC_OPTION_X_SPACE-1, offsetY+292+BASIC_OPTION_HEIGHT-1,
++		randomEventGroup[i].create(SING_X1 + 332+i*BASIC_OPTION_X_SPACE, SING_Y1+offsetY+292,
++			SING_X1 + 332+(i+1)*BASIC_OPTION_X_SPACE-1, SING_Y1+offsetY+292+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&randomEventGroup, i), 0, 0);
+ 	}
+ 
+@@ -441,55 +445,55 @@ static int select_option()
+ 	ButtonCustom clearEnemyButton, clearMonsterButton, enoughPeopleButton, enoughIncomeButton, enoughScoreButton, timeLimitButton;
+ 	ButtonCustom peopleInc, peopleDec, incomeInc, incomeDec, scoreInc, scoreDec, yearInc, yearDec;
+ 
+-	clearEnemyButton.create( 214, offsetY+145, 214+19, offsetY+145+19,
++	clearEnemyButton.create(SING_X1 + 214, SING_Y1+offsetY+145, SING_X1 + 214+19, SING_Y1+offsetY+145+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 1);
+ 	clearEnemyButton.enable_flag = 0;;
+-	clearMonsterButton.create( 214, offsetY+178, 214+19, offsetY+178+19,
++	clearMonsterButton.create(SING_X1 + 214, SING_Y1+offsetY+178, SING_X1 + 214+19, SING_Y1+offsetY+178+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_destroy_monster);
+-	enoughPeopleButton.create( 214, offsetY+211, 214+19, offsetY+211+19,
++	enoughPeopleButton.create(SING_X1 + 214, SING_Y1+offsetY+211, SING_X1 + 214+19, SING_Y1+offsetY+211+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0, 
+ 		tempConfig.goal_population_flag);
+-	enoughIncomeButton.create( 214, offsetY+244, 214+19, offsetY+244+19,	// -9
++	enoughIncomeButton.create(SING_X1 + 214, SING_Y1+offsetY+244, SING_X1 + 214+19, SING_Y1+offsetY+244+19,	// -9
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_economic_score_flag);
+-	enoughScoreButton.create( 214, offsetY+277, 214+19, offsetY+277+19,
++	enoughScoreButton.create(SING_X1 + 214, SING_Y1+offsetY+277, SING_X1 + 214+19, SING_Y1+offsetY+277+19,
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_total_score_flag);
+-	timeLimitButton.create( 214, offsetY+309, 214+19, offsetY+309+19,		// +23
++	timeLimitButton.create(SING_X1 + 214, SING_Y1+offsetY+309, SING_X1 + 214+19, SING_Y1+offsetY+309+19,		// +23
+ 		disp_virtual_tick, ButtonCustomPara(NULL, 0), 0,
+ 		tempConfig.goal_year_limit_flag);
+ 
+-	peopleInc.create( 529, offsetY+206, 
+-		529+COLOR_OPTION_X_SPACE-1, offsetY+206+COLOR_OPTION_HEIGHT-1, 
++	peopleInc.create(SING_X1 + 529, SING_Y1+offsetY+206,
++		SING_X1 + 529+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+206+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	peopleDec.create( 564, offsetY+206, 
+-		564+COLOR_OPTION_X_SPACE-1, offsetY+206+COLOR_OPTION_HEIGHT-1, 
++	peopleDec.create(SING_X1 + 564, SING_Y1+offsetY+206,
++		SING_X1  + 564+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+206+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeInc.create( 529, offsetY+238,
+-		529+COLOR_OPTION_X_SPACE-1, offsetY+238+COLOR_OPTION_HEIGHT-1, 
++	incomeInc.create(SING_X1 + 529, SING_Y1+offsetY+238,
++		SING_X1 + 529+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+238+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	incomeDec.create( 564, offsetY+238,
+-		564+COLOR_OPTION_X_SPACE-1, offsetY+238+COLOR_OPTION_HEIGHT-1, 
++	incomeDec.create(SING_X1 + 564, SING_Y1+offsetY+238,
++		SING_X1 + 564+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+238+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreInc.create( 529, offsetY+270,
+-		529+COLOR_OPTION_X_SPACE-1, offsetY+270+COLOR_OPTION_HEIGHT-1, 
++	scoreInc.create(SING_X1 + 529, SING_Y1+offsetY+270,
++		SING_X1 + 529+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+270+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	scoreDec.create( 564, offsetY+270,
+-		564+COLOR_OPTION_X_SPACE-1, offsetY+270+COLOR_OPTION_HEIGHT-1, 
++	scoreDec.create(SING_X1 + 564, SING_Y1+offsetY+270,
++		SING_X1 + 564+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+270+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearInc.create( 529, offsetY+302,
+-		529+COLOR_OPTION_X_SPACE-1, offsetY+302+COLOR_OPTION_HEIGHT-1, 
++	yearInc.create(SING_X1 + 529, SING_Y1+offsetY+302,
++		SING_X1 + 529+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+302+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+-	yearDec.create( 564, offsetY+302,
+-		564+COLOR_OPTION_X_SPACE-1, offsetY+302+COLOR_OPTION_HEIGHT-1, 
++	yearDec.create(SING_X1 + 564, SING_Y1+offsetY+302,
++		SING_X1 + 564+COLOR_OPTION_X_SPACE-1, SING_Y1+offsetY+302+COLOR_OPTION_HEIGHT-1,
+ 		disp_virtual_button, ButtonCustomPara(NULL, 0) );
+ 
+ 	Button3D startButton, returnButton;
+ 	// startButton.create(250, 553, "BB-START", "BB-START", 1, 0);
+ 	// returnButton.create(440, 553, "BB-RETURN", "BB-RETURN", 1, 0);
+-	startButton.create(194, 538, "START-U", "START-D", 1, 0);
+-	returnButton.create(440, 538, "CANCEL-U", "CANCEL-D", 1, 0);
++	startButton.create(SING_X1+194, SING_Y1+538, "START-U", "START-D", 1, 0);
++	returnButton.create(SING_X1+440, SING_Y1+538, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	vga_front.unlock_buf();
+ 
+@@ -520,14 +524,15 @@ static int select_option()
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "SPG-BSC");
++
+ #if(MAX_RACE == 10)
+ 					// protection : image_menu.put_to_buf( &vga_back, "SPG-BSC");
+ 					// ensure the user has the release version (I_MENU.RES)
+-					// image_menu2.put_to_buf( &vga_back, "SPG-BSC") get the real one
+-					image_menu2.put_to_buf( &vga_back, "SPG-BSC");
++					image_menu2.put_large(&vga_back, SING_X1, SING_Y1, "SPG-BSC");
++#else
++					image_menu.put_large(&vga_back, SING_X1, SING_Y1, "SPG-BSC");
+ #endif
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++					image_menu.put_back(SING_X1+234, SING_Y1+15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RACE )
+@@ -541,7 +546,7 @@ static int select_option()
+ 					#else
+ 						#define Y_SHIFT 0
+ 					#endif
+-					font_san.center_put(564, offsetY+154+Y_SHIFT, 564+25, offsetY+154+Y_SHIFT+21,
++					font_san.center_put(SING_X1+564, SING_Y1+offsetY+154+Y_SHIFT, SING_X1+564+25, SING_Y1+offsetY+154+Y_SHIFT+21,
+ 						misc.format(tempConfig.ai_nation_count), 1);
+ 					aiNationInc.paint();
+ 					aiNationDec.paint();
+@@ -562,8 +567,9 @@ static int select_option()
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "SPG-O1");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "SPG-O1");
++					image_menu.put_large(&vga_back, SING_X1, SING_Y1, "SPG-O1");
++					image_menu.put_back(SING_X1 + 234, SING_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_MAP_ID )
+@@ -589,13 +595,14 @@ static int select_option()
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "SPG-O2");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "SPG-O2");
++					image_menu.put_large(&vga_back, SING_X1, SING_Y1, "SPG-O2");
++					image_menu.put_back(SING_X1 + 234, SING_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_RAW )
+ 				{
+-					font_san.center_put(337, offsetY+105, 337+25, offsetY+105+21,
++					font_san.center_put(SING_X1 + 337, SING_Y1 + offsetY+105, SING_X1 + 337+25, SING_Y1 + offsetY+105+21,
+ 						misc.format(tempConfig.start_up_raw_site), 1);
+ 					rawSiteInc.paint();
+ 					rawSiteDec.paint();
+@@ -623,8 +630,9 @@ static int select_option()
+ 			{
+ 				if( refreshFlag & SGOPTION_PAGE )
+ 				{
+-					image_menu.put_to_buf( &vga_back, "SPG-GOAL");
+-					image_menu.put_back( 234, 15, menuTitleBitmap);
++// 					image_menu.put_to_buf( &vga_back, "SPG-GOAL");
++					image_menu.put_large(&vga_back, SING_X1, SING_Y1, "SPG-GOAL");
++					image_menu.put_back(SING_X1 + 234, SING_Y1 + 15, menuTitleBitmap);
+ 					vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 				}
+ 				if( refreshFlag & SGOPTION_CLEAR_ENEMY )
+@@ -634,7 +642,7 @@ static int select_option()
+ 				if( refreshFlag & SGOPTION_ENOUGH_PEOPLE )
+ 				{
+ 					enoughPeopleButton.paint(tempConfig.goal_population_flag);
+-					font_san.center_put( 456, offsetY+211, 456+67, offsetY+211+21,
++					font_san.center_put(SING_X1 + 456, SING_Y1 + offsetY+211, SING_X1 + 456+67, SING_Y1 + offsetY+211+21,
+ 						misc.format(tempConfig.goal_population) ,1);
+ 					peopleInc.paint();
+ 					peopleDec.paint();
+@@ -642,7 +650,7 @@ static int select_option()
+ 				if( refreshFlag & SGOPTION_ENOUGH_INCOME )
+ 				{
+ 					enoughIncomeButton.paint(tempConfig.goal_economic_score_flag);
+-					font_san.center_put( 456, offsetY+243, 456+67, offsetY+243+21,
++					font_san.center_put(SING_X1 + 456, SING_Y1 + offsetY+243, SING_X1 + 456+67, SING_Y1 + offsetY+243+21,
+ 						misc.format(tempConfig.goal_economic_score), 1);
+ 					incomeInc.paint();
+ 					incomeDec.paint();
+@@ -650,7 +658,7 @@ static int select_option()
+ 				if( refreshFlag & SGOPTION_ENOUGH_SCORE )
+ 				{
+ 					enoughScoreButton.paint(tempConfig.goal_total_score_flag);
+-					font_san.center_put( 456, offsetY+275, 456+67, offsetY+275+21,
++					font_san.center_put(SING_X1 + 456, SING_Y1 + offsetY+275, SING_X1 + 456+67, SING_Y1 + offsetY+275+21,
+ 						misc.format(tempConfig.goal_total_score), 1);
+ 					scoreInc.paint();
+ 					scoreDec.paint();
+@@ -658,7 +666,7 @@ static int select_option()
+ 				if( refreshFlag & SGOPTION_TIME_LIMIT )
+ 				{
+ 					timeLimitButton.paint(tempConfig.goal_year_limit_flag);
+-					font_san.center_put( 456, offsetY+307, 456+33, offsetY+307+21,
++					font_san.center_put(SING_X1 + 456, SING_Y1 + offsetY+307, SING_X1 + 456+33, SING_Y1 + offsetY+307+21,
+ 						misc.format(tempConfig.goal_year_limit), 1);
+ 					yearInc.paint();
+ 					yearDec.paint();
+@@ -668,7 +676,7 @@ static int select_option()
+ 			// ------- display difficulty -------//
+ 			if( refreshFlag & SGOPTION_DIFFICULTY )
+ 			{
+-				font_san.center_put( 718, offsetY+74, 780, offsetY+108,
++				font_san.center_put(SING_X1+718, SING_Y1+offsetY+74, SING_X1+780, SING_Y1+offsetY+108,
+ 					misc.format(tempConfig.single_player_difficulty()), 1 );
+ 			}
+ 
+@@ -980,7 +988,7 @@ static int select_option()
+ 
+ 		// --------- detect switch option button ------//
+ 
+-		if( mouse.single_click(96, offsetY+12, 218, offsetY+54) )
++		if( mouse.single_click(SING_X1+96, SING_Y1+offsetY+12, SING_X1 + 218, SING_Y1+offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_BASIC )
+ 			{
+@@ -988,7 +996,7 @@ static int select_option()
+ 				refreshFlag = SGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(236, offsetY+12, 363, offsetY+54) )
++		else if( mouse.single_click(SING_X1 + 236, SING_Y1+offsetY+12, SING_X1 + 363, SING_Y1+offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_ADVANCED )
+ 			{
+@@ -996,7 +1004,7 @@ static int select_option()
+ 				refreshFlag = SGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(380, offsetY+12, 506, offsetY+54) )
++		else if( mouse.single_click(SING_X1 + 380, SING_Y1+offsetY+12, SING_X1 + 506, SING_Y1+offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_ADVANCE2 )
+ 			{
+@@ -1004,7 +1012,7 @@ static int select_option()
+ 				refreshFlag = SGOPTION_ALL;
+ 			}
+ 		}
+-		else if( mouse.single_click(523, offsetY+12, 649, offsetY+54) )
++		else if( mouse.single_click(SING_X1 + 523, SING_Y1+offsetY+12, SING_X1 + 649, SING_Y1+offsetY+54) )
+ 		{
+ 			if( optionMode != OPTION_GOAL )
+ 			{
+diff --git a/src/OGFILEA.cpp b/src/OGFILEA.cpp
+index 4718d6e..db8dd9d 100644
+--- a/src/OGFILEA.cpp
++++ b/src/OGFILEA.cpp
+@@ -250,16 +250,9 @@ int GameFileArray::menu(int actionMode, int *recno)
+ 
+ 	//-------------------------------------//
+ 
+-	if( game.game_mode==GAME_PREGAME )	  // called from the main menu, not in the game
+-	{
+-		menu_x1 = FILE_MAIN_MENU_X1;
+-		menu_y1 = FILE_MAIN_MENU_Y1;
+-	}
+-	else
+-	{
+-		menu_x1 = FILE_IN_GAME_MENU_X1;
+-		menu_y1 = FILE_IN_GAME_MENU_Y1;
+-	}
++	// Save / Load game window - center of the screen
++	menu_x1 = (VGA_WIDTH - FILE_MENU_WIDTH) / 2;
++	menu_y1 = (VGA_HEIGHT - FILE_MENU_HEIGHT) / 2;
+ 
+ 	int x=menu_x1, y=menu_y1+17;
+ 
+diff --git a/src/OIMGRES.cpp b/src/OIMGRES.cpp
+index a19459d..cbc1af1 100644
+--- a/src/OIMGRES.cpp
++++ b/src/OIMGRES.cpp
+@@ -27,6 +27,7 @@
+ #include <OVGA.h>
+ #include <OMOUSE.h>
+ #include <OIMGRES.h>
++#include <SDL.h>
+ 
+ 
+ //--------- Format of RES file ------------//
+@@ -187,12 +188,13 @@ void ImageRes::put_join(int x, int y, const char* imageName)
+ // <VgaBuf*> vgaBuf 	  = the vga buffer for display
+ // <int>	    x,y       = the location of the image
+ // <char*>   imageName = name of the image
++// <int>	useStretch
+ //
+-void ImageRes::put_large(VgaBuf* vgaBuf, int x, int y, char* imageName)
++void ImageRes::put_large(VgaBuf* vgaBuf, int x, int y, char* imageName, int useStretch)
+ {
+ 	int dataSize;
+ 
+-	vgaBuf->put_large_bitmap( x, y, ResourceIdx::get_file(imageName, dataSize) );
++	vgaBuf->put_large_bitmap( x, y, ResourceIdx::get_file(imageName, dataSize), useStretch);
+ }
+ //---------- End of function ImageRes::put_large --------//
+ 
+@@ -275,3 +277,66 @@ void ImageRes::put_to_buf(VgaBuf* vgaBufPtr, int bitmapId)
+ }
+ //---------- End of function ImageRes::put_to_buf --------//
+ 
++
++//-------- Start of function ImageRes::put_cropped_area --------//
++//
++// Copy a rectangular region from the image to the VGA buffer
++// at 1:1 pixel ratio with clipping.
++//
++// <VgaBuf*> vgaBuf      = target buffer
++// <int>     desX, desY  = destination location
++// <int>     desW, desH  = destination size
++// <char*>   imageName   = name of the image
++// <int>     srcX, srcY  = source location in original image
++// <int>     srcW, srcH  = source size
++//
++void ImageRes::put_cropped_area(VgaBuf* vgaBuf, int desX, int desY, int desW, int desH, const char* imageName, int srcX, int srcY, int srcW, int srcH)
++{
++	int dataSize;
++	File* resFile = ResourceIdx::get_file(imageName, dataSize);
++	if( !resFile )
++		return;
++
++	short origW = 0, origH = 0;
++	resFile->file_read(&origW, 2);
++	resFile->file_read(&origH, 2);
++
++	if( origW <= 0 || origH <= 0 )
++		return;
++
++	int fullSize = origW * origH;
++	char* fullBitmap = new char[fullSize];
++	resFile->file_read(fullBitmap, fullSize);
++
++	int bufPitch = vgaBuf->buf_pitch();
++	int bufWidth = vgaBuf->buf_width();
++	int bufHeight = vgaBuf->buf_height();
++
++	int copyW = desW;
++	if( copyW > srcW ) copyW = srcW;
++	int copyH = desH;
++	if( copyH > srcH ) copyH = srcH;
++
++	for( int y = 0; y < copyH; ++y )
++	{
++		int screenY = desY + y;
++		if( screenY < 0 || screenY >= bufHeight )
++			continue;
++
++		const char* srcRow = fullBitmap + (srcY + y) * origW;
++		char* destLine = vgaBuf->buf_ptr() + screenY * bufPitch;
++
++		for( int x = 0; x < copyW; ++x )
++		{
++			int screenX = desX + x;
++			if( screenX < 0 || screenX >= bufWidth )
++				continue;
++
++			destLine[screenX] = srcRow[srcX + x];
++		}
++	}
++
++	delete[] fullBitmap;
++}
++//---------- End of function ImageRes::put_cropped_area --------//
++
+diff --git a/src/OINFO.cpp b/src/OINFO.cpp
+index 7fe2df4..c6be7c0 100644
+--- a/src/OINFO.cpp
++++ b/src/OINFO.cpp
+@@ -264,7 +264,34 @@ void Info::next_day()
+ //
+ void Info::disp_panel()
+ {
+-	image_interface.put_to_buf( &vga_back, "MAINSCR" );
++	// for 800x600 (default resolution), draw the original MAINSCR as is
++	if( config.win_width <= 800 && config.win_height <= 600 )
++	{
++		image_interface.put_large(&vga_back, 0, 0, "MAINSCR", 1);
++	}
++	else
++	{
++		// for higher resolutions, crop regions from I_IF_3840_2160.RES
++		int W = config.win_width;
++		int H = config.win_height;
++		int topBarH = 56;
++		int rightBarW = 224;
++		int bottomBorderH = 10;
++		int rightBarX = config.zoom_width;
++
++		// 1. draw top bar (stops at right bar start)
++		image_interface.put_cropped_area(&vga_back, 0, 0, rightBarX, topBarH, "MAINSCR", 0, 0, 3616, topBarH);
++
++		// 2. draw top-right corner
++		image_interface.put_cropped_area(&vga_back, rightBarX, 0, rightBarW, topBarH, "MAINSCR", 3616, 0, 224, topBarH);
++
++		// 3. draw right bar strip
++		int rightBarH = H - topBarH - bottomBorderH;
++		image_interface.put_cropped_area(&vga_back, rightBarX, topBarH, rightBarW, rightBarH, "MAINSCR", 3616, topBarH, 224, 2094);
++
++		// 4. draw bottom-right corner
++		image_interface.put_cropped_area(&vga_back, rightBarX, H - bottomBorderH, rightBarW, bottomBorderH, "MAINSCR", 3616, 2150, 224, bottomBorderH);
++	}
+ 
+ 	//------ keep a copy of bitmap of the panel texture -----//
+ 
+@@ -674,10 +701,10 @@ void Info::save_game_scr()
+ 
+ 	// left and right
+ 	if( 0 < ZOOM_X1 )
+-		save_buf_3 = vga_front.save_area(0, ZOOM_Y1, ZOOM_X1-1, ZOOM_Y2);
++		save_buf_3 = vga_front.save_area(0, ZOOM_Y1, ZOOM_X1-1, ZOOM_Y2-1);
+ 
+ 	if( ZOOM_X2 < VGA_WIDTH-1 )
+-		save_buf_4 = vga_front.save_area(ZOOM_X2+1, ZOOM_Y1, VGA_WIDTH-1, ZOOM_Y2);
++		save_buf_4 = vga_front.save_area(ZOOM_X2+1, ZOOM_Y1, VGA_WIDTH-1, ZOOM_Y2-1);
+ }
+ //---------- End of function Info::save_game_scr ---------//
+ 
+diff --git a/src/OINGMENU.cpp b/src/OINGMENU.cpp
+index 7345cbb..02ba78c 100644
+--- a/src/OINGMENU.cpp
++++ b/src/OINGMENU.cpp
+@@ -46,19 +46,19 @@
+ enum { GAME_MENU_WIDTH  = 350,
+        GAME_MENU_HEIGHT = 400  };
+ 
+-enum { GAME_MENU_X1 = ZOOM_X1 + ( (ZOOM_X2-ZOOM_X1+1) - GAME_MENU_WIDTH ) / 2,
+-       GAME_MENU_Y1 = ZOOM_Y1 + ( (ZOOM_Y2-ZOOM_Y1+1) - GAME_MENU_HEIGHT ) / 2 };
++#define GAME_MENU_X1 ZOOM_X1 + ((ZOOM_X2 - ZOOM_X1 + 1) - GAME_MENU_WIDTH) / 2
++#define GAME_MENU_Y1 ZOOM_Y1 + ((ZOOM_Y2 - ZOOM_Y1 + 1) - GAME_MENU_HEIGHT) / 2
+ 
+ enum { GAME_OPTION_WIDTH  = 170,
+        GAME_OPTION_HEIGHT = 34   };
+ 
+-enum { GAME_OPTION_X1 = GAME_MENU_X1+90,
+-       GAME_OPTION_Y1 = GAME_MENU_Y1+93  };
++#define GAME_OPTION_X1 GAME_MENU_X1 + 90
++#define GAME_OPTION_Y1 GAME_MENU_Y1 + 93
+ 
+-enum { MAP_ID_X1 = GAME_MENU_X1 + 18,
+-       MAP_ID_Y1 = GAME_MENU_Y1 + 362,
+-       MAP_ID_X2 = GAME_MENU_X1 + 330,
+-       MAP_ID_Y2 = GAME_MENU_Y1 + 382 };
++#define MAP_ID_X1 GAME_MENU_X1 + 18
++#define MAP_ID_Y1 GAME_MENU_Y1 + 362
++#define MAP_ID_X2 GAME_MENU_X1 + 330
++#define MAP_ID_Y2 GAME_MENU_Y1 + 382
+ 
+ unsigned InGameMenu::menu_hot_key[GAME_OPTION_COUNT] = {'o','s','l', 0,0,0,0,KEY_ESC };
+ 
+@@ -237,7 +237,7 @@ int InGameMenu::detect()
+       case 5:     // retire
+          if( nation_array.player_recno )     // only when the player's kingdom still exists
+          {
+-            if( box.ask(_("Do you really want to retire?"), _("Yes"), _("No"), 175, 320) )
++            if( box.ask("Do you really want to retire?", "Yes", "No", VGA_X1+160, VGA_Y1 + 320) )
+             {
+                if( remote.is_enable() )
+                {
+@@ -256,13 +256,13 @@ int InGameMenu::detect()
+          int boxX1;
+ 
+          #ifdef GERMAN
+-            boxX1 = 125;
++            boxX1 = VGA_X1 + 125;
+          #else
+-            boxX1 = 115;
++            boxX1 = VGA_X1 + 115;
+          #endif
+ 
+-         if( !nation_array.player_recno ||
+-             box.ask( _("Do you really want to quit to the Main Menu?"), _("Yes"), _("No"), boxX1, 350 ) )
++         if( !nation_array.player_recno || 
++            box.ask( "Do you really want to quit to the Main Menu?", "Yes", "No", boxX1, VGA_Y1 + 350 ) )
+          {
+             if( remote.is_enable() && nation_array.player_recno )
+             {
+@@ -278,7 +278,7 @@ int InGameMenu::detect()
+ 
+       case 7:
+          if( !nation_array.player_recno ||
+-             box.ask( _("Do you really want to quit Seven Kingdoms?"), _("Yes"), _("No"), 178, 388 ) )
++             box.ask( "Do you really want to quit Seven Kingdoms?", "Yes", "No", VGA_X1 + 115, VGA_Y1 + 388 ) )
+          {
+             if( remote.is_enable() && nation_array.player_recno )
+             {
+diff --git a/src/OLIGHTN.cpp b/src/OLIGHTN.cpp
+index ac2c3bb..173179b 100644
+--- a/src/OLIGHTN.cpp
++++ b/src/OLIGHTN.cpp
+@@ -86,6 +86,11 @@ unsigned Lightning::rand_seed()
+ void Lightning::init(double fromX, double fromY, double toX, double toY,
+ 							char energy)
+ {
++	bound_x1 = ZOOM_X1 + 4;
++	bound_y1 = ZOOM_Y1 - 4;
++	bound_x2 = ZOOM_X2 - 4;
++	bound_y2 = ZOOM_Y2 - 4;
++
+ 	x = fromX;
+ 	y = fromY;
+ 	destx = toX;
+diff --git a/src/OMATRIX.cpp b/src/OMATRIX.cpp
+index 7b8bba0..216ef5c 100644
+--- a/src/OMATRIX.cpp
++++ b/src/OMATRIX.cpp
+@@ -319,6 +319,9 @@ int Matrix::valid_cur_box(int callRefresh)
+ 		if( top_x_loc + disp_x_loc > max_x_loc )
+ 			top_x_loc = max_x_loc - disp_x_loc;
+ 
++		if( top_x_loc < 0 )
++			top_x_loc = 0;
++
+ 		scrolledFlag=1;
+ 	}
+ 
+@@ -333,6 +336,9 @@ int Matrix::valid_cur_box(int callRefresh)
+ 		if( top_y_loc + disp_y_loc > max_y_loc )
+ 			top_y_loc = max_y_loc - disp_y_loc;
+ 
++		if( top_y_loc < 0 )
++			top_y_loc = 0;
++
+ 		scrolledFlag=1;
+ 	}
+ 
+diff --git a/src/OMEM.cpp b/src/OMEM.cpp
+index fba02cd..738ecef 100644
+--- a/src/OMEM.cpp
++++ b/src/OMEM.cpp
+@@ -90,7 +90,7 @@ char* Mem::add(unsigned memSize, const char* fileName, int fileLine)
+ {
+ 	// ###### begin Gilbert 29/8 ######//
+ 	//err_when( memSize > 1000000 );		//**BUGHERE, for temporary debugging only
+-	err_when( memSize > 0x800000 );
++   err_when( memSize > 0xFF0000 );
+ 	// ###### end Gilbert 29/8 ######//
+ 
+    //----------- build up memory pointer table ---------//
+diff --git a/src/ONEWS.cpp b/src/ONEWS.cpp
+index f7d1f99..db0fbb8 100644
+--- a/src/ONEWS.cpp
++++ b/src/ONEWS.cpp
+@@ -37,11 +37,10 @@
+ 
+ //------- define screen coordinations -------//
+ 
+-enum { NEWS_HEIGHT = 20,
+-		 NEWS_X1 = ZOOM_X1+8,
+-		 NEWS_X2 = ZOOM_X2-16,
+-		 NEWS_Y2 = ZOOM_Y2-5,
+-	  };
++#define NEWS_HEIGHT 20
++#define NEWS_X1 ZOOM_X1 + 8
++#define NEWS_X2 ZOOM_X2 - 16
++#define NEWS_Y2 ZOOM_Y2 - 5
+ 
+ //--------- define static vars --------------//
+ 
+diff --git a/src/OOPTMENU.cpp b/src/OOPTMENU.cpp
+index 04d50be..8b09341 100644
+--- a/src/OOPTMENU.cpp
++++ b/src/OOPTMENU.cpp
+@@ -106,23 +106,23 @@ void OptionMenu::enter(char untilExitFlag)
+ 	old_config = config;
+ 
+ 	// -------- initialize sound effect volume --------//
+-	se_vol_slide.init_slide(264, 123, 420, 123+SLIDE_BUTTON_HEIGHT-1, 
++	se_vol_slide.init_slide(VGA_X1+264, VGA_Y1 + 123, VGA_X1 + 420, VGA_Y1 + 123+SLIDE_BUTTON_HEIGHT-1,
+ 		SLIDE_BUTTON_WIDTH, disp_slide_bar);
+ 	se_vol_slide.set(0, 100, tempConfig.sound_effect_flag ? tempConfig.sound_effect_volume : 0);
+ 
+ 	// -------- initialize music volume --------//
+-	music_vol_slide.init_slide(566, 123, 722, 123+SLIDE_BUTTON_HEIGHT-1, 
++	music_vol_slide.init_slide(VGA_X1 + 566, VGA_Y1 + 123, VGA_X1 + 722, VGA_Y1 + 123+SLIDE_BUTTON_HEIGHT-1,
+ 		SLIDE_BUTTON_WIDTH, disp_slide_bar);
+ 	music_vol_slide.set(0, 100, tempConfig.music_flag ? tempConfig.wav_music_volume : 0);
+ 
+ 	// -------- initialize frame speed volume --------//
+-	frame_speed_slide.init_slide(196, 410, 352, 410+SLIDE_BUTTON_HEIGHT-1, 
++	frame_speed_slide.init_slide(VGA_X1 + 196, VGA_Y1 + 410, VGA_X1 + 352, VGA_Y1 + 410+SLIDE_BUTTON_HEIGHT-1,
+ 		SLIDE_BUTTON_WIDTH, disp_slide_bar);
+ 	frame_speed_slide.set(0, 31, tempConfig.frame_speed <= 30 ? tempConfig.frame_speed: 31);
+ 	// use frame 31 to represent full speed (i.e. 99)
+ 
+ 	// -------- initialize scroll speed volume --------//
+-	scroll_speed_slide.init_slide(196, 454, 352, 454+SLIDE_BUTTON_HEIGHT-1, 
++	scroll_speed_slide.init_slide(VGA_X1 + 196, VGA_Y1 + 454, VGA_X1 + 352, VGA_Y1 + 454+SLIDE_BUTTON_HEIGHT-1,
+ 		SLIDE_BUTTON_WIDTH, disp_slide_bar);
+ 	scroll_speed_slide.set(0, 10, tempConfig.scroll_speed );
+ 
+@@ -130,8 +130,8 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < MAX_RACE_TABLE; ++i )
+ 	{
+-		race_button[i].create(181+i*BASIC_OPTION_X_SPACE, 162,
+-			181+(i+1)*BASIC_OPTION_X_SPACE-1, 162+BASIC_OPTION_HEIGHT-1,
++		race_button[i].create(VGA_X1 + 181+i*BASIC_OPTION_X_SPACE, VGA_Y1 + 162,
++			VGA_X1 + 181+(i+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 162+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(NULL, race_table[i]));
+ 	}
+ 
+@@ -139,8 +139,8 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < 3; ++i )
+ 	{
+-		help_group[i].create(120+i*BASIC_OPTION_X_SPACE, 244,
+-			120+(i+1)*BASIC_OPTION_X_SPACE-1, 244+BASIC_OPTION_HEIGHT-1,
++		help_group[i].create(VGA_X1 + 120+i*BASIC_OPTION_X_SPACE, VGA_Y1 + 244,
++			VGA_X1 + 120+(i+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 244+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&help_group, i), 0, 0);
+ 	}
+ 
+@@ -148,8 +148,8 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		news_group[i].create(198+i*BASIC_OPTION_X_SPACE, 320,
+-			198+(i+1)*BASIC_OPTION_X_SPACE-1, 320+BASIC_OPTION_HEIGHT-1,
++		news_group[i].create(VGA_X1 + 198+i*BASIC_OPTION_X_SPACE, VGA_Y1 + 320,
++			VGA_X1 + 198+(i+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 320+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&news_group, 1-i), 0, 0);
+ 	}
+ 
+@@ -157,8 +157,8 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		report_group[i].create(572+i*BASIC_OPTION_X_SPACE, 244,
+-			572+(i+1)*BASIC_OPTION_X_SPACE-1, 244+BASIC_OPTION_HEIGHT-1,
++		report_group[i].create(VGA_X1 + 572+i*BASIC_OPTION_X_SPACE, VGA_Y1+244,
++			VGA_X1 + 572+(i+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 244+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&report_group, 1-i), 0, 0);
+ 	}
+ 
+@@ -166,8 +166,8 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < 2; ++i )
+ 	{
+-		show_icon_group[i].create(572+i*BASIC_OPTION_X_SPACE, 320,
+-			572+(i+1)*BASIC_OPTION_X_SPACE-1, 320+BASIC_OPTION_HEIGHT-1,
++		show_icon_group[i].create(VGA_X1 + 572+i*BASIC_OPTION_X_SPACE, VGA_Y1 + 320,
++			VGA_X1 + 572+(i+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 320+BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&show_icon_group, 1-i), 0, 0);
+ 	}
+ 
+@@ -175,14 +175,14 @@ void OptionMenu::enter(char untilExitFlag)
+ 
+ 	for( i = 0; i < 4; ++i )
+ 	{
+-		show_path_group[i].create(572+(i/2)*BASIC_OPTION_X_SPACE, 408+(i%2)*BASIC_OPTION_HEIGHT,
+-			572+(i/2+1)*BASIC_OPTION_X_SPACE-1, 408+(i%2+1)*BASIC_OPTION_HEIGHT-1,
++		show_path_group[i].create(VGA_X1 + 572+(i/2)*BASIC_OPTION_X_SPACE, VGA_Y1 + 408+(i%2)*BASIC_OPTION_HEIGHT,
++			VGA_X1 + 572+(i/2+1)*BASIC_OPTION_X_SPACE-1, VGA_Y1 + 408+(i%2+1)*BASIC_OPTION_HEIGHT-1,
+ 			disp_virtual_button, ButtonCustomPara(&show_path_group, i), 0, 0);
+ 	}
+ 
+ 	// --------- other buttons --------//
+-	start_button.create(200, 520, "RETURN-U", "RETURN-D", 1, 0);
+-	cancel_button.create(416, 520, "CANCEL-U", "CANCEL-D", 1, 0);
++	start_button.create(VGA_X1 + 200, VGA_Y1+520, "RETURN-U", "RETURN-D", 1, 0);
++	cancel_button.create(VGA_X1 + 416, VGA_Y1+ 520, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	mouse_cursor.set_icon(CURSOR_NORMAL);
+ 
+@@ -220,7 +220,7 @@ void OptionMenu::disp(int needRepaint)
+ 	{
+ 		if( refresh_flag & IGOPTION_PAGE )
+ 		{
+-			image_interface.put_to_buf( &vga_back, "OPTIONS");
++			image_interface.put_large(&vga_back, VGA_X1, VGA_Y1, "OPTIONS");
+ 			vga_util.blt_buf(0,0,VGA_WIDTH-1,VGA_HEIGHT-1,0);
+ 
+ 			start_button.paint();
+diff --git a/src/OR_AI.cpp b/src/OR_AI.cpp
+index d531c76..5b4a997 100644
+--- a/src/OR_AI.cpp
++++ b/src/OR_AI.cpp
+@@ -33,23 +33,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { ACTION_BROWSE_X1 = ZOOM_X1+6,
+-		 ACTION_BROWSE_Y1 = ZOOM_Y1+6,
+-		 ACTION_BROWSE_X2 = ZOOM_X2-6,
+-		 ACTION_BROWSE_Y2 = ACTION_BROWSE_Y1+200
+-	  };
+-
+-enum { ATTACK_BROWSE_X1 = ZOOM_X1+6,
+-		 ATTACK_BROWSE_Y1 = ACTION_BROWSE_Y2+6,
+-		 ATTACK_BROWSE_X2 = ZOOM_X2-6,
+-		 ATTACK_BROWSE_Y2 = ATTACK_BROWSE_Y1+160
+-	  };
+-
+-enum { OTHER_INFO_X1 = ZOOM_X1+6,
+-		 OTHER_INFO_Y1 = ATTACK_BROWSE_Y2+6,
+-		 OTHER_INFO_X2 = ZOOM_X2-6,
+-		 OTHER_INFO_Y2 = ZOOM_Y2-6,
+-	  };
++#define ACTION_BROWSE_X1 ZOOM_X1 + 6
++#define ACTION_BROWSE_Y1 ZOOM_Y1 + 6
++#define ACTION_BROWSE_X2 ZOOM_X2 - 6
++#define ACTION_BROWSE_Y2 ACTION_BROWSE_Y1 + 200
++
++#define ATTACK_BROWSE_X1 ZOOM_X1 + 6
++#define ATTACK_BROWSE_Y1 ACTION_BROWSE_Y2 + 6
++#define ATTACK_BROWSE_X2 ZOOM_X2 - 6
++#define ATTACK_BROWSE_Y2 ATTACK_BROWSE_Y1 + 160
++
++#define OTHER_INFO_X1 ZOOM_X1 + 6
++#define OTHER_INFO_Y1 ATTACK_BROWSE_Y2 + 6
++#define OTHER_INFO_X2 ZOOM_X2 - 6
++#define OTHER_INFO_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define action mode string --------//
+ 
+diff --git a/src/OR_ECO.cpp b/src/OR_ECO.cpp
+index 33d4e36..cc074bf 100644
+--- a/src/OR_ECO.cpp
++++ b/src/OR_ECO.cpp
+@@ -37,17 +37,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { INCOME_BROWSE_X1 = ZOOM_X1+6,
+-		 INCOME_BROWSE_Y1 = ZOOM_Y1+6,
+-		 INCOME_BROWSE_X2 = ZOOM_X2-6,
+-		 INCOME_BROWSE_Y2 = INCOME_BROWSE_Y1+186
+-	  };
+-
+-enum { EXPENSE_BROWSE_X1 = ZOOM_X1+6,
+-		 EXPENSE_BROWSE_Y1 = INCOME_BROWSE_Y2+6,
+-		 EXPENSE_BROWSE_X2 = ZOOM_X2-6,
+-		 EXPENSE_BROWSE_Y2 = ZOOM_Y2-30,
+-	  };
++#define INCOME_BROWSE_X1 ZOOM_X1 + 6
++#define INCOME_BROWSE_Y1 ZOOM_Y1 + 6
++#define INCOME_BROWSE_X2 ZOOM_X2 - 6
++#define INCOME_BROWSE_Y2 INCOME_BROWSE_Y1 + 186
++
++#define EXPENSE_BROWSE_X1 ZOOM_X1 + 6
++#define EXPENSE_BROWSE_Y1 INCOME_BROWSE_Y2 + 6
++#define EXPENSE_BROWSE_X2 ZOOM_X2 - 6
++#define EXPENSE_BROWSE_Y2 ZOOM_Y2 - 30
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_MIL.cpp b/src/OR_MIL.cpp
+index f54531d..a80fe55 100644
+--- a/src/OR_MIL.cpp
++++ b/src/OR_MIL.cpp
+@@ -37,17 +37,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { TROOP_BROWSE_X1 = ZOOM_X1+6,
+-		 TROOP_BROWSE_Y1 = ZOOM_Y1+6,
+-		 TROOP_BROWSE_X2 = ZOOM_X2-6,
+-		 TROOP_BROWSE_Y2 = TROOP_BROWSE_Y1+240
+-	  };
+-
+-enum { UNIT_BROWSE_X1 = ZOOM_X1+6,
+-		 UNIT_BROWSE_Y1 = TROOP_BROWSE_Y2+6,
+-		 UNIT_BROWSE_X2 = ZOOM_X2-6,
+-		 UNIT_BROWSE_Y2 = ZOOM_Y2-6,
+-	  };
++#define TROOP_BROWSE_X1 ZOOM_X1 + 6
++#define TROOP_BROWSE_Y1 ZOOM_Y1 + 6
++#define TROOP_BROWSE_X2 ZOOM_X2 - 6
++#define TROOP_BROWSE_Y2 TROOP_BROWSE_Y1 + 240
++
++#define UNIT_BROWSE_X1 ZOOM_X1 + 6
++#define UNIT_BROWSE_Y1 TROOP_BROWSE_Y2 + 6
++#define UNIT_BROWSE_X2 ZOOM_X2 - 6
++#define UNIT_BROWSE_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_NAT.cpp b/src/OR_NAT.cpp
+index 13c447e..18ff15e 100644
+--- a/src/OR_NAT.cpp
++++ b/src/OR_NAT.cpp
+@@ -44,23 +44,22 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { REPORT_BROWSE_X1 = ZOOM_X1+6,
+-		 REPORT_BROWSE_Y1 = ZOOM_Y1+6,
+-		 REPORT_BROWSE_X2 = ZOOM_X2-6,
+-		 REPORT_BROWSE_Y2 = REPORT_BROWSE_Y1+206,
+-
+-		 REPORT_BUTTON_X1 = ZOOM_X1+8,
+-		 REPORT_BUTTON_Y1 = REPORT_BROWSE_Y2+6,
+-		 REPORT_BUTTON_WIDTH = 135,
+-		 REPORT_BUTTON_Y2 = REPORT_BUTTON_Y1+20,
+-		 REPORT_BUTTON_X_SPACE = 130,
+-
+-		 REPORT_DET_X1 = ZOOM_X1+6,
+-		 REPORT_DET_Y1 = REPORT_BUTTON_Y2+4,
+-		 REPORT_DET_X2 = ZOOM_X2-6,
+-		 REPORT_DET_Y2 = ZOOM_Y2-6,
+-		 REPORT_TALK_Y2 = ZOOM_Y2-86,		// use a shorter height for the diplomacy menu as it needs to let the player looks at the messages received.
+-	 };
++#define REPORT_BROWSE_X1 ZOOM_X1 + 6
++#define REPORT_BROWSE_Y1 ZOOM_Y1 + 6
++#define REPORT_BROWSE_X2 ZOOM_X2 - 6
++#define REPORT_BROWSE_Y2 REPORT_BROWSE_Y1 + 206
++
++#define REPORT_BUTTON_X1 ZOOM_X1 + 8
++#define REPORT_BUTTON_Y1 REPORT_BROWSE_Y2 + 6
++#define REPORT_BUTTON_WIDTH 135
++#define REPORT_BUTTON_Y2 REPORT_BUTTON_Y1 + 20
++#define REPORT_BUTTON_X_SPACE 130
++
++#define REPORT_DET_X1 ZOOM_X1 + 6
++#define REPORT_DET_Y1 REPORT_BUTTON_Y2 + 4
++#define REPORT_DET_X2 ZOOM_X2 - 6
++#define REPORT_DET_Y2 ZOOM_Y2 - 6
++#define REPORT_TALK_Y2 ZOOM_Y2 - 86	
+ 
+ //---------- Define report mode strings ---------//
+ 
+diff --git a/src/OR_NEWS.cpp b/src/OR_NEWS.cpp
+index ff055b2..8fa6c19 100644
+--- a/src/OR_NEWS.cpp
++++ b/src/OR_NEWS.cpp
+@@ -35,11 +35,10 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { NEWS_BROWSE_X1 = ZOOM_X1+6,
+-		 NEWS_BROWSE_Y1 = ZOOM_Y1+6,
+-		 NEWS_BROWSE_X2 = ZOOM_X2-6,
+-		 NEWS_BROWSE_Y2 = ZOOM_Y2-25,
+-	  };
++#define NEWS_BROWSE_X1 ZOOM_X1 + 6
++#define NEWS_BROWSE_Y1 ZOOM_Y1 + 6
++#define NEWS_BROWSE_X2 ZOOM_X2 - 6
++#define NEWS_BROWSE_Y2 ZOOM_Y2 - 25
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_RANK.cpp b/src/OR_RANK.cpp
+index 0d79a82..fc6db71 100644
+--- a/src/OR_RANK.cpp
++++ b/src/OR_RANK.cpp
+@@ -33,27 +33,23 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { NATION_BROWSE_X1 = ZOOM_X1+6,
+-		 NATION_BROWSE_Y1 = ZOOM_Y1+6,
+-		 NATION_BROWSE_X2 = ZOOM_X2-6,
+-		 NATION_BROWSE_Y2 = NATION_BROWSE_Y1+220,
+-	 };
+-
+-enum { NATION_SCORE_X1 = ZOOM_X1+6,
+-		 NATION_SCORE_Y1 = NATION_BROWSE_Y2+6,
+-		 NATION_SCORE_X2 = ZOOM_X2-6,
+-		 NATION_SCORE_Y2 = NATION_SCORE_Y1+150,
+-	 };
+-
+-enum { NATION_GOAL_X1 = ZOOM_X1+6,
+-		 NATION_GOAL_Y1 = NATION_SCORE_Y2+6,
+-		 NATION_GOAL_X2 = ZOOM_X2-6,
+-		 NATION_GOAL_Y2 = NATION_GOAL_Y1+110,
+-	 };
+-
+-enum { PLAY_TIME_X1 = ZOOM_X1+6,
+-		 PLAY_TIME_X2 = ZOOM_X2-6,
+-	 };
++#define NATION_BROWSE_X1 ZOOM_X1 + 6
++#define NATION_BROWSE_Y1 ZOOM_Y1 + 6
++#define NATION_BROWSE_X2 ZOOM_X2 - 6
++#define NATION_BROWSE_Y2 NATION_BROWSE_Y1 + 220
++
++#define NATION_SCORE_X1 ZOOM_X1 + 6
++#define NATION_SCORE_Y1 NATION_BROWSE_Y2 + 6
++#define NATION_SCORE_X2 ZOOM_X2 - 6
++#define NATION_SCORE_Y2 NATION_SCORE_Y1 + 150
++
++#define NATION_GOAL_X1 ZOOM_X1 + 6
++#define NATION_GOAL_Y1 NATION_SCORE_Y2 + 6
++#define NATION_GOAL_X2 ZOOM_X2 - 6
++#define NATION_GOAL_Y2 NATION_GOAL_Y1 + 110
++
++#define PLAY_TIME_X1 ZOOM_X1 + 6
++#define PLAY_TIME_X2 ZOOM_X2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_SPY.cpp b/src/OR_SPY.cpp
+index 9084c2b..94ef979 100644
+--- a/src/OR_SPY.cpp
++++ b/src/OR_SPY.cpp
+@@ -34,11 +34,10 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { SPY_BROWSE_X1 = ZOOM_X1+6,
+-		 SPY_BROWSE_Y1 = ZOOM_Y1+6,
+-		 SPY_BROWSE_X2 = ZOOM_X2-6,
+-		 SPY_BROWSE_Y2 = ZOOM_Y2-6,
+-	  };
++#define SPY_BROWSE_X1 ZOOM_X1 + 6
++#define SPY_BROWSE_Y1 ZOOM_Y1 + 6
++#define SPY_BROWSE_X2 ZOOM_X2 - 6
++#define SPY_BROWSE_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_TECH.cpp b/src/OR_TECH.cpp
+index 24e0806..d9de573 100644
+--- a/src/OR_TECH.cpp
++++ b/src/OR_TECH.cpp
+@@ -37,23 +37,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { TECH_BROWSE_X1 = ZOOM_X1+6,
+-		 TECH_BROWSE_Y1 = ZOOM_Y1+6,
+-		 TECH_BROWSE_X2 = ZOOM_X2-6,
+-		 TECH_BROWSE_Y2 = TECH_BROWSE_Y1+220
+-	  };
+-
+-enum { SCROLL_X1 = ZOOM_X1+6,
+-		 SCROLL_Y1 = TECH_BROWSE_Y2+6,
+-		 SCROLL_X2 = ZOOM_X2-6,
+-		 SCROLL_Y2 = SCROLL_Y1+80
+-	  };
+-
+-enum { GOD_BROWSE_X1 = ZOOM_X1+6,
+-		 GOD_BROWSE_Y1 = SCROLL_Y2+6,
+-		 GOD_BROWSE_X2 = ZOOM_X2-6,
+-		 GOD_BROWSE_Y2 = ZOOM_Y2-6
+-	  };
++#define TECH_BROWSE_X1 ZOOM_X1 + 6
++#define TECH_BROWSE_Y1 ZOOM_Y1 + 6
++#define TECH_BROWSE_X2 ZOOM_X2 - 6
++#define TECH_BROWSE_Y2 TECH_BROWSE_Y1 + 220
++
++#define SCROLL_X1 ZOOM_X1 + 6
++#define SCROLL_Y1 TECH_BROWSE_Y2 + 6
++#define SCROLL_X2 ZOOM_X2 - 6
++#define SCROLL_Y2 SCROLL_Y1 + 80
++
++#define GOD_BROWSE_X1 ZOOM_X1 + 6
++#define GOD_BROWSE_Y1 SCROLL_Y2 + 6
++#define GOD_BROWSE_X2 ZOOM_X2 - 6
++#define GOD_BROWSE_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+@@ -98,11 +95,11 @@ void Info::disp_tech(int refreshFlag)
+ 	font_san.put( x+460, y   , "Tower of" );
+ 	font_san.put( x+468, y+13, "Science" );
+ #elif(defined(FRENCH))
+-	font_san.put( x+160, y   , "Catégorie" );
++	font_san.put( x+160, y   , "CatÃ©gorie" );
+ 	font_san.put( x+160, y+13, "Actuelle" );
+ 
+-	font_san.put( x+230, y   , "Catégorie" );
+-	font_san.put( x+230, y+13, "Recherchée" );
++	font_san.put( x+230, y   , "CatÃ©gorie" );
++	font_san.put( x+230, y+13, "RecherchÃ©e" );
+ 
+ 	font_san.put( x+320, y,    "Etat de la" );
+ 	font_san.put( x+320, y+13, "Recherche");
+diff --git a/src/OR_TOWN.cpp b/src/OR_TOWN.cpp
+index 118d85a..51fcd89 100644
+--- a/src/OR_TOWN.cpp
++++ b/src/OR_TOWN.cpp
+@@ -37,23 +37,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { TOWN_BROWSE_X1 = ZOOM_X1+6,
+-		 TOWN_BROWSE_Y1 = ZOOM_Y1+6,
+-		 TOWN_BROWSE_X2 = ZOOM_X2-6,
+-		 TOWN_BROWSE_Y2 = TOWN_BROWSE_Y1+280
+-	  };
+-
+-enum { POP_TOTAL_X1 = ZOOM_X1+6,
+-		 POP_TOTAL_Y1 = TOWN_BROWSE_Y2+2,
+-		 POP_TOTAL_X2 = ZOOM_X2-6,
+-		 POP_TOTAL_Y2 = POP_TOTAL_Y1+18,
+-	  };
+-
+-enum { FIRM_BROWSE_X1 = ZOOM_X1+6,
+-		 FIRM_BROWSE_Y1 = POP_TOTAL_Y2+6,
+-		 FIRM_BROWSE_X2 = ZOOM_X2-6,
+-		 FIRM_BROWSE_Y2 = ZOOM_Y2-6,
+-	  };
++#define TOWN_BROWSE_X1 ZOOM_X1 + 6
++#define TOWN_BROWSE_Y1 ZOOM_Y1 + 6
++#define TOWN_BROWSE_X2 ZOOM_X2 - 6
++#define TOWN_BROWSE_Y2 TOWN_BROWSE_Y1 + 280
++
++#define POP_TOTAL_X1 ZOOM_X1 + 6
++#define POP_TOTAL_Y1 TOWN_BROWSE_Y2 + 2
++#define POP_TOTAL_X2 ZOOM_X2 - 6
++#define POP_TOTAL_Y2 POP_TOTAL_Y1 + 18
++
++#define FIRM_BROWSE_X1 ZOOM_X1 + 6
++#define FIRM_BROWSE_Y1 POP_TOTAL_Y2 + 6
++#define FIRM_BROWSE_X2 ZOOM_X2 - 6
++#define FIRM_BROWSE_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_TRADE.cpp b/src/OR_TRADE.cpp
+index d97f652..88ed88f 100644
+--- a/src/OR_TRADE.cpp
++++ b/src/OR_TRADE.cpp
+@@ -46,24 +46,21 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { CARAVAN_BROWSE_X1 = ZOOM_X1+6,
+-		 CARAVAN_BROWSE_Y1 = ZOOM_Y1+6,
+-		 CARAVAN_BROWSE_X2 = ZOOM_X2-6,
+-		 CARAVAN_BROWSE_Y2 = CARAVAN_BROWSE_Y1+220
+-	  };
+-
+-enum { REPORT_BUTTON_X1 = ZOOM_X1+8,
+-		 REPORT_BUTTON_Y1 = CARAVAN_BROWSE_Y2+4,
+-		 REPORT_BUTTON_WIDTH = 90,
+-		 REPORT_BUTTON_Y2 = REPORT_BUTTON_Y1+20,
+-		 REPORT_BUTTON_X_SPACE = 130,
+-	};
+-
+-enum { FIRM_BROWSE_X1 = ZOOM_X1+6,
+-		 FIRM_BROWSE_Y1 = REPORT_BUTTON_Y2+4,
+-		 FIRM_BROWSE_X2 = ZOOM_X2-6,
+-		 FIRM_BROWSE_Y2 = ZOOM_Y2-6,
+-	  };
++#define CARAVAN_BROWSE_X1 ZOOM_X1 + 6
++#define CARAVAN_BROWSE_Y1 ZOOM_Y1 + 6
++#define CARAVAN_BROWSE_X2 ZOOM_X2 - 6
++#define CARAVAN_BROWSE_Y2 CARAVAN_BROWSE_Y1 + 260
++
++#define REPORT_BUTTON_X1  ZOOM_X1+8
++#define REPORT_BUTTON_Y1  CARAVAN_BROWSE_Y2+4
++#define REPORT_BUTTON_WIDTH  90
++#define REPORT_BUTTON_Y2  REPORT_BUTTON_Y1+20
++#define REPORT_BUTTON_X_SPACE  130
++
++#define FIRM_BROWSE_X1 ZOOM_X1 + 6
++#define FIRM_BROWSE_Y1 CARAVAN_BROWSE_Y2 + 6
++#define FIRM_BROWSE_X2 ZOOM_X2 - 6
++#define FIRM_BROWSE_Y2 ZOOM_Y2 - 6
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OSNOW1.cpp b/src/OSNOW1.cpp
+index e6faab7..351fcca 100644
+--- a/src/OSNOW1.cpp
++++ b/src/OSNOW1.cpp
+@@ -26,6 +26,7 @@
+ #include <OVGABUF.h>
+ #include <COLOR.h>
+ #include <ALL.h>
++#include <algorithm>
+ 
+ //---------- Define constant -------------//
+ 
+@@ -41,8 +42,8 @@ void SnowLayer::set_bound(int x1, int y1, int x2, int y2)
+ {
+ 	bound_x1 = x1;
+ 	bound_y1 = y1;
+-	bound_x2 = x2;
+-	bound_y2 = y2;
++	bound_x2 = std::min(x2, vga_back.buf_width() - 1);
++	bound_y2 = std::min(y2, vga_back.buf_height() - 1);
+ }
+ //---------- End of function SnowLayer::set_bound -----//
+ 
+diff --git a/src/OSYS.cpp b/src/OSYS.cpp
+index e6682f9..f01fb44 100644
+--- a/src/OSYS.cpp
++++ b/src/OSYS.cpp
+@@ -416,7 +416,13 @@ int Sys::init_objects()
+    #endif
+ 
+    image_icon.init(DIR_RES"I_ICON.RES",1,0);       // 1-read into buffer
+-   image_interface.init(DIR_RES"I_IF.RES",0,0);    // 0-don't read into the buffer, don't use common buffer
++
++   // determine correct resource file based on resolution
++    const char* filename = (config.win_width <= 800 && config.win_height <= 600) ? "I_IF.RES" : "I_IF_3840_2160.RES";
++   char* pathpath = new char[100];
++   strcpy(pathpath, DIR_RES);
++   strcat(pathpath, filename);
++   image_interface.init(pathpath,0,0);    // 0-don't read into the buffer, don't use common buffer
+ 
+    #ifndef DEMO         // do not load these in the demo verison
+       image_menu.init(DIR_RES"I_MENU.RES",0,0);       // 0-don't read into the buffer, don't use common buffer
+diff --git a/src/OSYS2.cpp b/src/OSYS2.cpp
+index 8c337fb..6373a0e 100644
+--- a/src/OSYS2.cpp
++++ b/src/OSYS2.cpp
+@@ -378,7 +378,7 @@ void Sys::disp_button()
+ {
+ 	vga.use_back();
+ 
+-	button_menu.paint( 720, 6, "MENU-U", "MENU-D" );
++	button_menu.paint( VGA_WIDTH - 80, 6, "MENU-U", "MENU-D" );
+ 	button_menu.set_help_code( "GAMEMENU" );
+ 
+ 	vga.use_front();
+@@ -686,7 +686,7 @@ void Sys::update_view()
+ 		{
+ 			vga.use_back();
+ /*
+-			char* germanStr = "d ü    ä    ß    ö    Ä    Ü    Ö";
++			char* germanStr = "d Ã¼    Ã¤    ÃŸ    Ã¶    Ã„    Ãœ    Ã–";
+ 
+ 			vga_back.bar( ZOOM_X1, ZOOM_Y1, ZOOM_X1+300, ZOOM_Y1+150, VGA_LIGHT_GREEN );
+ 
+diff --git a/src/OTALKRES.cpp b/src/OTALKRES.cpp
+index b6f4d74..494d084 100644
+--- a/src/OTALKRES.cpp
++++ b/src/OTALKRES.cpp
+@@ -39,14 +39,13 @@
+ 
+ //---------- the subtitle area ----------//
+ 
+-enum { TALK_X1 = ZOOM_X1+16,
+-		 TALK_Y1 = ZOOM_Y1+252,
+-		 TALK_X2 = ZOOM_X2-16,
+-		 TALK_Y2 = ZOOM_Y2-86,
+-	  };
+-
+ enum { TALK_LINE_HEIGHT = 18 };
+ 
++#define TALK_X1 ZOOM_X1 + 16
++#define TALK_Y1 ZOOM_Y1 + 252
++#define TALK_X2 ZOOM_X2 - 16
++#define TALK_Y2 ZOOM_Y2 - 86
++
+ //------- define constant --------//
+ 
+ #define MESSAGE_SENT_STR		_("The message has been sent.")
+diff --git a/src/OTOWNIF.cpp b/src/OTOWNIF.cpp
+index c6c79e8..9111cdb 100644
+--- a/src/OTOWNIF.cpp
++++ b/src/OTOWNIF.cpp
+@@ -52,17 +52,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-enum { RACE_BROWSE_X1 = INFO_X1,
+-		 RACE_BROWSE_Y1 = INFO_Y1+48,
+-		 RACE_BROWSE_X2 = INFO_X2,
+-		 RACE_BROWSE_Y2 = RACE_BROWSE_Y1+130,
+-	  };
+-
+-enum { BUTTON_X1 = INFO_X1,
+-		 BUTTON_Y1 = RACE_BROWSE_Y2+28,
+-		 BUTTON_X2 = INFO_X2,
+-		 BUTTON_Y2 = BUTTON_Y1+50,
+-     };
++#define RACE_BROWSE_X1 INFO_X1
++#define RACE_BROWSE_Y1 INFO_Y1 + 48
++#define RACE_BROWSE_X2 INFO_X2
++#define RACE_BROWSE_Y2 RACE_BROWSE_Y1 + 130
++
++#define BUTTON_X1 INFO_X1
++#define BUTTON_Y1 RACE_BROWSE_Y2 + 28
++#define BUTTON_X2 INFO_X2
++#define BUTTON_Y2 BUTTON_Y1 + 50
+ 
+ //---------- Define constant ------------//
+ 
+diff --git a/src/OTUTOR.cpp b/src/OTUTOR.cpp
+index 065c819..4ce4023 100644
+--- a/src/OTUTOR.cpp
++++ b/src/OTUTOR.cpp
+@@ -55,15 +55,13 @@
+ 
+ //---------- define coordinations ------------//
+ 
+-enum { TUTOR_X1 = ZOOM_X1,
+-		 TUTOR_Y1 = ZOOM_Y1,
+-		 TUTOR_X2 = ZOOM_X2,
+-		 TUTOR_Y2 = TUTOR_Y1+120
+-	  };
+-
+-enum { TUTOR_BUTTON_X1 = TUTOR_X2-66,
+-		 TUTOR_BUTTON_Y1 = TUTOR_Y1+20
+-	  };
++#define TUTOR_X1 ZOOM_X1
++#define TUTOR_Y1 ZOOM_Y1
++#define TUTOR_X2 ZOOM_X2
++#define TUTOR_Y2 TUTOR_Y1 + 120
++
++#define TUTOR_BUTTON_X1 TUTOR_X2 - 66
++#define TUTOR_BUTTON_Y1 TUTOR_Y1 + 20
+ 
+ //-------- Define static vars ----------//
+ 
+diff --git a/src/OTUTOR2.cpp b/src/OTUTOR2.cpp
+index 5bd77a2..7debcb8 100644
+--- a/src/OTUTOR2.cpp
++++ b/src/OTUTOR2.cpp
+@@ -47,24 +47,11 @@
+ 
+ static void disp_scroll_bar_func(SlideVBar *scroll, int);
+ 
+-
+-enum { TUTOR_MENU_X1 = 0,
+-		 TUTOR_MENU_Y1 = 0,
+-		 TUTOR_MENU_WIDTH = VGA_WIDTH,
+-		 TUTOR_MENU_HEIGHT = VGA_HEIGHT };
+-
+ enum { SCROLL_X1 = 757,
+ 		 SCROLL_Y1 = 309,
+ 		 SCROLL_X2 = 770,
+ 		 SCROLL_Y2 = 492 };
+ 
+-enum { BROWSE_X1 = 30,
+-		 BROWSE_Y1 = 292,
+-		 BROWSE_REC_WIDTH  = 725,
+-		 BROWSE_REC_HEIGHT = 44,
+-		 BROWSE_X2 = BROWSE_X1 + BROWSE_REC_WIDTH - 1,
+-		 MAX_BROWSE_DISP_REC = 5 };
+-
+ enum { TEXT_AREA_X1 = 40,
+ 		 TEXT_AREA_Y1 = 198,
+ 		 TEXT_AREA_X2 = 768,
+@@ -76,6 +63,24 @@ enum { TEXT_AREA_X1 = 40,
+ enum { TEXT_OFFSET_X = 11,
+ 		 TEXT_OFFSET_Y = 9 };
+ 
++enum {	T2_BROWSE_X1 = 30,
++		 T2_BROWSE_Y1 = 292,
++		 T2_BROWSE_REC_WIDTH  = 725,
++		 T2_BROWSE_REC_HEIGHT = 44,
++ 		 T2_BROWSE_X2 = T2_BROWSE_X1 + T2_BROWSE_REC_WIDTH - 1,
++		 T2_MAX_BROWSE_DISP_REC = 5 };
++
++#define TUTOR2_MENU_X1 ((VGA_WIDTH>>1)-400)
++#define TUTOR2_MENU_Y1 ((VGA_HEIGHT>>1)-300)
++#define TUTOR2_MENU_WIDTH 800
++#define TUTOR2_MENU_HEIGHT 600
++
++enum {   T2_SCROLL_X1 = 757,
++		 T2_SCROLL_Y1 = 309,
++		 T2_SCROLL_X2 = 770,
++		 T2_SCROLL_Y2 = 492 };
++
++
+ #define TU_USE_BACKUP_SURFACE
+ 
+ #define TUOPTION_BROWSE(s)     (1 << (s))
+@@ -99,10 +104,10 @@ int Tutor::select_tutor(int actionMode)
+ 	{
+ 		// copy or restore screen to back buffer
+ 		int scrnX1, scrnY1, scrnX2, scrnY2;
+-		scrnX1 = TUTOR_MENU_X1;
+-		scrnY1 = TUTOR_MENU_Y1;
+-		scrnX2 = scrnX1 + TUTOR_MENU_WIDTH-1;
+-		scrnY2 = scrnY1 + TUTOR_MENU_HEIGHT-1;
++		scrnX1 = TUTOR2_MENU_X1;
++		scrnY1 = TUTOR2_MENU_Y1;
++		scrnX2 = scrnX1 + TUTOR2_MENU_WIDTH-1;
++		scrnY2 = scrnY1 + TUTOR2_MENU_HEIGHT-1;
+ 
+ 		mouse.hide_area( scrnX1, scrnY1, scrnX2, scrnY2);
+ 
+@@ -141,8 +146,8 @@ int Tutor::select_tutor(int actionMode)
+ 	music.stop();
+ 	// ##### end Gilbert 4/11 ########//
+ 
+-	int menuX1 = TUTOR_MENU_X1;
+-	int menuY1 = TUTOR_MENU_Y1;
++	int menuX1 = TUTOR2_MENU_X1;
++	int menuY1 = TUTOR2_MENU_Y1;
+ 
+ 	// int x=menuX1, y=menuY1+17;
+ 
+@@ -168,27 +173,27 @@ int Tutor::select_tutor(int actionMode)
+ 	int retFlag = 0;
+ 	int refreshFlag = TUOPTION_ALL;
+ 
+-	scrollUp.create(menuX1+SCROLL_X1,menuY1+SCROLL_Y1-17, "SV-UP-U", "SV-UP-D", 1, 0);
+-	scrollDown.create(menuX1+SCROLL_X1,menuY1+SCROLL_Y2+1, "SV-DW-U", "SV-DW-D", 1, 0);
++	scrollUp.create(menuX1+T2_SCROLL_X1,menuY1+T2_SCROLL_Y1-17, "SV-UP-U", "SV-UP-D", 1, 0);
++	scrollDown.create(menuX1+T2_SCROLL_X1,menuY1+T2_SCROLL_Y2+1, "SV-DW-U", "SV-DW-D", 1, 0);
+ 	startButton.create(menuX1+170, menuY1+529, "START-U", "START-D",1, 0);
+ 	cancelButton.create(menuX1+465, menuY1+529, "CANCEL-U", "CANCEL-D", 1, 0);
+ 
+ 	SlideVBar scrollBar;
+-	scrollBar.init_scroll(menuX1+SCROLL_X1, menuY1+SCROLL_Y1, menuX1+SCROLL_X2, menuY1+SCROLL_Y2,
+-		MAX_BROWSE_DISP_REC, disp_scroll_bar_func);
++	scrollBar.init_scroll(menuX1+T2_SCROLL_X1, menuY1+T2_SCROLL_Y1, menuX1+T2_SCROLL_X2, menuY1+T2_SCROLL_Y2,
++		T2_MAX_BROWSE_DISP_REC, disp_scroll_bar_func);
+ 	scrollBar.set(minRecno, tutor_count, minRecno);
+ 
+ 	// try to centre the selected record on the browser
+-//	int newBrowseTopRecno = browseRecno - MAX_BROWSE_DISP_REC/2;
++//	int newBrowseTopRecno = browseRecno - T2_MAX_BROWSE_DISP_REC/2;
+ //	if( newBrowseTopRecno > scrollBar.max_view_recno() )
+ //		newBrowseTopRecno = scrollBar.max_view_recno();
+ //	if( newBrowseTopRecno < scrollBar.min_recno )
+ ///		newBrowseTopRecno = scrollBar.min_recno;
+-	scrollBar.set_view_recno(browseRecno - MAX_BROWSE_DISP_REC/2);
++	scrollBar.set_view_recno(browseRecno - T2_MAX_BROWSE_DISP_REC/2);
+ 
+ #ifdef TU_USE_BACKUP_SURFACE
+ 	// create temporary surface
+-	Blob browseArea[MAX_BROWSE_DISP_REC];
++	Blob browseArea[T2_MAX_BROWSE_DISP_REC];
+ 	Blob scrollArea;
+ 	Blob textArea;
+ #endif
+@@ -212,22 +217,22 @@ int Tutor::select_tutor(int actionMode)
+ 
+ 			if( refreshFlag & TUOPTION_PAGE )
+ 			{
+-				mouse.hide_area(menuX1, menuY1, menuX1+TUTOR_MENU_WIDTH, menuY1+TUTOR_MENU_HEIGHT);
++				mouse.hide_area(menuX1, menuY1, menuX1+TUTOR2_MENU_WIDTH, menuY1+TUTOR2_MENU_HEIGHT);
+ 
+ 				image_interface.put_front( menuX1, menuY1, "TUTORIAL" );
+ #ifdef TU_USE_BACKUP_SURFACE
+ 				// capture into browseArea, scrollArea, textArea
+-				for( int j = 0; j < MAX_BROWSE_DISP_REC; ++j)
++				for( int j = 0; j < T2_MAX_BROWSE_DISP_REC; ++j)
+ 				{
+-					browseArea[j].resize(2*sizeof(short) + BROWSE_REC_WIDTH*BROWSE_REC_HEIGHT);
++					browseArea[j].resize(2*sizeof(short) + T2_BROWSE_REC_WIDTH*T2_BROWSE_REC_HEIGHT);
+ 					vga_front.read_bitmap(
+-						menuX1+BROWSE_X1, menuY1+BROWSE_Y1 + j*BROWSE_REC_HEIGHT,
+-						menuX1+BROWSE_X2, menuY1+BROWSE_Y1 + j*BROWSE_REC_HEIGHT+BROWSE_REC_HEIGHT-1,
++						menuX1+T2_BROWSE_X1, menuY1+T2_BROWSE_Y1 + j*T2_BROWSE_REC_HEIGHT,
++						menuX1+T2_BROWSE_X2, menuY1+T2_BROWSE_Y1 + j*T2_BROWSE_REC_HEIGHT+T2_BROWSE_REC_HEIGHT-1,
+ 						browseArea[j].ptr);
+ 				}
+ 
+-				scrollArea.resize(2*sizeof(short)+(SCROLL_X2-SCROLL_X1+1)*(SCROLL_Y2-SCROLL_Y1+1));
+-				vga_front.read_bitmap(menuX1+SCROLL_X1,menuY1+SCROLL_Y1,menuX1+SCROLL_X2,menuY1+SCROLL_Y2, scrollArea.ptr);
++				scrollArea.resize(2*sizeof(short)+(T2_SCROLL_X2-T2_SCROLL_X1+1)*(T2_SCROLL_Y2-T2_SCROLL_Y1+1));
++				vga_front.read_bitmap(menuX1+T2_SCROLL_X1,menuY1+T2_SCROLL_Y1,menuX1+T2_SCROLL_X2,menuY1+T2_SCROLL_Y2, scrollArea.ptr);
+ 
+ 				textArea.resize(2*sizeof(short)+TEXT_AREA_WIDTH*TEXT_AREA_HEIGHT);
+ 				vga_front.read_bitmap(menuX1+TEXT_AREA_X1, menuY1+TEXT_AREA_Y1,
+@@ -245,7 +250,7 @@ int Tutor::select_tutor(int actionMode)
+ 			{
+ 				if( browseRecno && image_tutorial.get_index(this->operator[](browseRecno)->code) )
+ 				{
+-					image_tutorial.put_large(&vga_front, 21,19, this->operator[](browseRecno)->code);
++					image_tutorial.put_large(&vga_front, TUTOR2_MENU_X1+21, TUTOR2_MENU_Y1+19, this->operator[](browseRecno)->code);
+ 				}
+ 				else
+ 				{
+@@ -260,8 +265,9 @@ int Tutor::select_tutor(int actionMode)
+ 			{
+ #ifdef TU_USE_BACKUP_SURFACE
+ 				// copy from back buffer
+-				vga_front.put_bitmap(menuX1+TEXT_AREA_X1, menuY1+TEXT_AREA_Y1, 
+-					textArea.ptr);
++				//vga_front.put_bitmap(menuX1+T2_SCROLL_X1, menuY1+T2_SCROLL_Y1,
++				//	scrollArea.ptr);
++				vga_front.put_bitmap(menuX1+TEXT_AREA_X1, menuY1+TEXT_AREA_Y1, textArea.ptr);
+ #endif
+ 				if( browseRecno ) 
+ 				{
+@@ -292,17 +298,17 @@ int Tutor::select_tutor(int actionMode)
+ 				int rec, slot;
+ 				for( slot = 0; slot < scrollBar.view_size; ++slot)
+ 				{
+-					int browseSlotX1 = menuX1+BROWSE_X1;
+-					int browseSlotY1 = menuY1+BROWSE_Y1+slot*BROWSE_REC_HEIGHT;
+-					int browseSlotX2 = menuX1+BROWSE_X2;
+-					int browseSlotY2 = menuY1+BROWSE_Y1+(slot+1)*BROWSE_REC_HEIGHT-1;
++					int browseSlotX1 = menuX1+T2_BROWSE_X1;
++					int browseSlotY1 = menuY1+T2_BROWSE_Y1+slot*T2_BROWSE_REC_HEIGHT;
++					int browseSlotX2 = menuX1+T2_BROWSE_X2;
++					int browseSlotY2 = menuY1+T2_BROWSE_Y1+(slot+1)*T2_BROWSE_REC_HEIGHT-1;
+ 
+ 					rec = scrollBar.view_recno + slot;
+ 					if( refreshFlag & TUOPTION_BROWSE(slot) )
+ 					{
+ #ifdef TU_USE_BACKUP_SURFACE
+ 						vga_front.put_bitmap(browseSlotX1, browseSlotY1,
+-							browseArea[rec%MAX_BROWSE_DISP_REC].ptr);
++							browseArea[rec%T2_MAX_BROWSE_DISP_REC].ptr);
+ #endif
+ 						if( rec >= 1 && rec <= tutor_count )
+ 						{
+@@ -317,7 +323,7 @@ int Tutor::select_tutor(int actionMode)
+ 							{
+ 								vga_front.adjust_brightness(browseSlotX1, browseSlotY1, browseSlotX2, browseSlotY2, -2);
+ 
+-								//vga_front.put_bitmap_trans_decompress( menuX1+BROWSE_X1, menuY1+BROWSE_Y1+slot*BROWSE_REC_HEIGHT,
++								//vga_front.put_bitmap_trans_decompress( menuX1+T2_BROWSE_X1, menuY1+T2_BROWSE_Y1+slot*T2_BROWSE_REC_HEIGHT,
+ 								//	image_button.read("LS-DWN"));
+ 							}
+ 						}
+@@ -358,13 +364,13 @@ int Tutor::select_tutor(int actionMode)
+ 			if( oldValue != scrollBar.set_view_recno(oldValue+1) )
+ 				refreshFlag |= TUOPTION_ALL_BROWSE | TUOPTION_SCROLL;
+ 		}
+-		else if( mouse.double_click( menuX1+BROWSE_X1, menuY1+BROWSE_Y1, 
+-			menuX1+BROWSE_X1+BROWSE_REC_WIDTH-1, 
+-			menuY1+BROWSE_Y1+ BROWSE_REC_HEIGHT*MAX_BROWSE_DISP_REC -1) )
++		else if( mouse.double_click( menuX1+T2_BROWSE_X1, menuY1+T2_BROWSE_Y1, 
++			menuX1+T2_BROWSE_X1+T2_BROWSE_REC_WIDTH-1, 
++			menuY1+T2_BROWSE_Y1+ T2_BROWSE_REC_HEIGHT*T2_MAX_BROWSE_DISP_REC -1) )
+ 		{
+ 			// double click on game slot
+ 			int oldValue = browseRecno;
+-			int newValue = scrollBar.view_recno + (mouse.click_y(0) - BROWSE_Y1 - menuY1) / BROWSE_REC_HEIGHT;
++			int newValue = scrollBar.view_recno + (mouse.click_y(0) - T2_BROWSE_Y1 - menuY1) / T2_BROWSE_REC_HEIGHT;
+ 			if( newValue <= tutor_count && newValue == oldValue)
+ 			{
+ 				browseRecno = newValue;
+@@ -372,13 +378,13 @@ int Tutor::select_tutor(int actionMode)
+ 				break;
+ 			}
+ 		}
+-		else if( mouse.single_click( menuX1+BROWSE_X1, menuY1+BROWSE_Y1, 
+-			menuX1+BROWSE_X1+BROWSE_REC_WIDTH-1, 
+-			menuY1+BROWSE_Y1+ BROWSE_REC_HEIGHT*MAX_BROWSE_DISP_REC -1) )
++		else if( mouse.single_click( menuX1+T2_BROWSE_X1, menuY1+T2_BROWSE_Y1, 
++			menuX1+T2_BROWSE_X1+T2_BROWSE_REC_WIDTH-1, 
++			menuY1+T2_BROWSE_Y1+ T2_BROWSE_REC_HEIGHT*T2_MAX_BROWSE_DISP_REC -1) )
+ 		{
+ 			// click on game slot
+ 			int oldValue = browseRecno;
+-			int newValue = scrollBar.view_recno + (mouse.click_y(0) - BROWSE_Y1 - menuY1) / BROWSE_REC_HEIGHT;
++			int newValue = scrollBar.view_recno + (mouse.click_y(0) - T2_BROWSE_Y1 - menuY1) / T2_BROWSE_REC_HEIGHT;
+ 			// ##### begin Gilbert 31/10 ########//
+ 			if( newValue <= tutor_count )
+ 			{
+@@ -386,8 +392,8 @@ int Tutor::select_tutor(int actionMode)
+ 				{
+ 					browseRecno = newValue;
+ 					refreshFlag |= TUOPTION_BROWSE(newValue-scrollBar.view_recno)
+-						| TUOPTION_TEXT_AREA | TUOPTION_PIC_AREA;
+-					if( oldValue-scrollBar.view_recno >= 0 && oldValue-scrollBar.view_recno < MAX_BROWSE_DISP_REC )
++						| TUOPTION_TEXT_AREA | TUOPTION_PIC_AREA | TUOPTION_SCROLL; ;
++					if( oldValue-scrollBar.view_recno >= 0 && oldValue-scrollBar.view_recno < T2_MAX_BROWSE_DISP_REC )
+ 						refreshFlag |= TUOPTION_BROWSE(oldValue-scrollBar.view_recno);
+ 				}
+ 			}
+diff --git a/src/OVGA.cpp b/src/OVGA.cpp
+index 917e1f4..d9c5c3c 100644
+--- a/src/OVGA.cpp
++++ b/src/OVGA.cpp
+@@ -30,6 +30,7 @@
+ #include <version.h>
+ #include <FilePath.h>
+ #include <ConfigAdv.h>
++#include <OCONFIG.h>
+ 
+ DBGLOG_DEFAULT_CHANNEL(Vga);
+ 
+diff --git a/src/OVGABUF.cpp b/src/OVGABUF.cpp
+index 7583c81..931f70a 100644
+--- a/src/OVGABUF.cpp
++++ b/src/OVGABUF.cpp
+@@ -385,7 +385,7 @@ void VgaBuf::rest_area(char* saveScr, int releaseFlag)
+ //
+ //---------------------------------------------//
+ 
+-void VgaBuf::put_large_bitmap(int x1, int y1, File* filePtr)
++void VgaBuf::put_large_bitmap(int x1, int y1, File* filePtr, int useStretch)
+ {
+ 	if( filePtr == NULL )
+ 		return;
+@@ -439,7 +439,14 @@ void VgaBuf::put_large_bitmap(int x1, int y1, File* filePtr)
+ 		if( is_front )
+ 			mouse.hide_area( x1,y1,x2,y2 );  // if the mouse cursor is in that area, hide it
+ 
+-		put_bitmap2( x1, y1, pictWidth, pictHeight, sys.common_data_buf );
++		if (useStretch)
++		{
++			put_bitmap2_s(x1, y1, pictWidth, pictHeight, sys.common_data_buf);
++		}
++		else
++		{
++			put_bitmap2(x1, y1, pictWidth, pictHeight, sys.common_data_buf);
++		}
+ 
+ 		if( is_front )
+ 			mouse.show_area();
+@@ -459,7 +466,14 @@ void VgaBuf::put_large_bitmap(int x1, int y1, File* filePtr)
+ 			if( is_front )
+ 				mouse.hide_area( x1,y1,x2,ty );  // if the mouse cursor is in that area, hide it
+ 
+-			put_bitmap2( x1, y1, pictWidth, ty-y1+1, sys.common_data_buf );
++			if (useStretch)
++			{
++				put_bitmap2_s(x1, y1, pictWidth, ty - y1 + 1, sys.common_data_buf);
++			}
++			else
++			{
++				put_bitmap2(x1, y1, pictWidth, ty - y1 + 1, sys.common_data_buf);
++			}
+ 
+ 			if( is_front )
+ 				mouse.show_area();
+diff --git a/src/OWORLD.cpp b/src/OWORLD.cpp
+index 32159b2..38410b9 100644
+--- a/src/OWORLD.cpp
++++ b/src/OWORLD.cpp
+@@ -131,7 +131,7 @@ void World::assign_map()
+ 	//------------- assign map -------------//
+ 
+    map_matrix-> assign_map(loc_matrix, max_x_loc, max_y_loc );
+-	zoom_matrix->assign_map(loc_matrix, max_x_loc, max_y_loc );
++   zoom_matrix->assign_map(loc_matrix, max_x_loc, max_y_loc );
+ 
+    //-------- set the zoom area box on map matrix ------//
+ 
+diff --git a/src/OWORLD_M.cpp b/src/OWORLD_M.cpp
+index e4f947b..14847b5 100644
+--- a/src/OWORLD_M.cpp
++++ b/src/OWORLD_M.cpp
+@@ -108,9 +108,9 @@ void MapMatrix::disp_mode_button(int putFront)
+ 	}
+ 
+ 	if( putFront )
+-		image_button.put_front( 579, 2, iconName, 1 );
++		image_button.put_front( MAPMODE_X1, MAPMODE_Y1, iconName, 1 );
+ 	else
+-		image_button.put_back( 579, 2, iconName, 1 );
++		image_button.put_back( MAPMODE_X1, MAPMODE_Y1, iconName, 1 );
+ }
+ //----------- End of function MapMatrix::disp_mode_button ------------//
+ 
+@@ -119,13 +119,13 @@ void MapMatrix::disp_mode_button(int putFront)
+ 
+ int MapMatrix::detect()
+ {
+-	int x=586;
++	int x = MAPMODE_X1;
+ 
+ 	#define MAP_MODE_BUTTON_WIDTH 40
+ 
+ 	for( int i=0 ; i<MAP_MODE_COUNT ; i++, x+=MAP_MODE_BUTTON_WIDTH )
+ 	{
+-		if( mouse.single_click(	x, 7, x+MAP_MODE_BUTTON_WIDTH-1, 46 ) )
++		if( mouse.single_click(	x, MAPMODE_Y1, x + MAP_MODE_BUTTON_WIDTH-1, 46 ) )
+ 		{
+ 			toggle_map_mode(i);
+ 			return 1;
+diff --git a/src/OWORLD_Z.cpp b/src/OWORLD_Z.cpp
+index bf6fbb9..e201c11 100644
+--- a/src/OWORLD_Z.cpp
++++ b/src/OWORLD_Z.cpp
+@@ -22,6 +22,7 @@
+ //Description : Object ZoomMatrix
+ 
+ #include <math.h>
++#include <algorithm>
+ #include <OVGA.h>
+ #include <OSYS.h>
+ #include <OFONT.h>
+@@ -62,8 +63,13 @@
+ #include <OFIRMDIE.h>
+ #include <OIMGRES.h>
+ #include "gettext.h"
++#include <algorithm>
+ 
+ //--------- Define static vars -----------//
++#define Lightning_bound_x1 (ZOOM_X1 + 4)
++#define Lightning_bound_y1 (ZOOM_Y1 - 4)
++#define Lightning_bound_x2 (ZOOM_X2 - 4)
++#define Lightning_bound_y2 (ZOOM_Y2 - 4)
+ 
+ //static int 			init_rain = 0;					// reset on new game and load game
+ static Rain 		rain;
+@@ -324,8 +330,8 @@ void ZoomMatrix::draw()
+ 	Location* locPtr;
+ 	char*     nationColorArray = nation_array.nation_power_color_array;
+ 
+-	int maxXLoc = top_x_loc + disp_x_loc;        // divide by 2 for world_info
+-	int maxYLoc = top_y_loc + disp_y_loc;
++	int maxXLoc = std::min(top_x_loc + disp_x_loc, max_x_loc);
++	int maxYLoc = std::min(top_y_loc + disp_y_loc, max_y_loc);
+ 
+ 	dispPower = (world.map_matrix->map_mode == MAP_MODE_POWER &&
+ 					 world.map_matrix->power_mode ) ||
+@@ -468,8 +474,8 @@ void ZoomMatrix::draw_white_site()
+ 	int       i=0, x, y, xLoc, yLoc;
+ 	Location* locPtr;
+ 
+-	int maxXLoc = top_x_loc + disp_x_loc;        // divide by 2 for world_info
+-	int maxYLoc = top_y_loc + disp_y_loc;
++	int maxXLoc = std::min(top_x_loc + disp_x_loc, max_x_loc);
++	int maxYLoc = std::min(top_y_loc + disp_y_loc, max_y_loc);
+ 
+ 	//------- draw occupied locations in whie ---------//
+ 
+@@ -504,6 +510,10 @@ void ZoomMatrix::draw_frame()
+ 		blacken_unexplored();
+ 
+ 	disp_text();
++
++	// fill gap between zoom image bottom and screen bottom
++	if( image_y2 + 1 < VGA_HEIGHT )
++		vga_back.bar( image_x1, image_y2 + 1, image_x2, VGA_HEIGHT - 1, V_BLACK );
+ }
+ //----------- End of function ZoomMatrix::draw_frame ------------//
+ 
+@@ -519,7 +529,7 @@ void ZoomMatrix::draw_weather_effects()
+ 		if(vibration == -1)
+ 		{
+ 			// start of an earthquake
+-			vibration = weather.quake_rate(top_x_loc+disp_x_loc/2, top_y_loc+disp_y_loc/2)*16/100;
++			vibration = weather.quake_rate(std::min(top_x_loc+disp_x_loc/2, max_x_loc-1), std::min(top_y_loc+disp_y_loc/2, max_y_loc-1))*16/100;
+ 			if( config.sound_effect_flag && config.earthquake_audio)
+ 			{
+ 				RelVolume r(config.earthquake_volume,0);
+@@ -548,7 +558,7 @@ void ZoomMatrix::draw_weather_effects()
+ 		}
+ 		else
+ 		{
+-			vibration = weather.quake_rate(top_x_loc+disp_x_loc/2, top_y_loc+disp_y_loc/2)*16/100;
++		vibration = weather.quake_rate(std::min(top_x_loc+disp_x_loc/2, max_x_loc-1), std::min(top_y_loc+disp_y_loc/2, max_y_loc-1))*16/100;
+ 		}
+ 	}
+ 	else
+@@ -649,6 +659,13 @@ void ZoomMatrix::draw_weather_effects()
+ 	//                99 - 1             (rest states)
+ 	// see world.process
+ 
++	int ww = config.zoom_height;
++	int ww2 = config.zoom_width;
++	int hh = Lightning_bound_y1;
++	int hh2 = Lightning_bound_y2;
++	int hh33 = Lightning::bound_y1;
++	int hh333 = Lightning::bound_y2;
++
+ 	unsigned long mRandom = misc.get_random_seed();
+ 	if( world.lightning_signal >= 105 && world.lightning_signal <= 108)
+ 	{
+@@ -662,11 +679,10 @@ void ZoomMatrix::draw_weather_effects()
+ 			}
+ 
+ 			// find the starting and ending point of the lightning
+-			lightning_x1 = Lightning::bound_x1 + 20 + short(mRandom % (Lightning::bound_x2-Lightning::bound_x1 - 40));
+-			lightning_y1 = Lightning::bound_y1 - 50;
+-			lightning_x2 = Lightning::bound_x1 + 10 + short(mRandom % (Lightning::bound_x2-Lightning::bound_x1 - 20));
+-			lightning_y2 = (Lightning::bound_y1+Lightning::bound_y2) / 2 +
+-				short(mRandom % ( (Lightning::bound_y2-Lightning::bound_y1) / 2));
++			lightning_x1 = Lightning_bound_x1 + 20 + short(mRandom % (Lightning_bound_x2 - Lightning_bound_x1 - 40));
++			lightning_y1 = Lightning_bound_y1 - 50;
++			lightning_x2 = Lightning_bound_x1 + 10 + short(mRandom % (Lightning_bound_x2 - Lightning_bound_x1 - 20));
++			lightning_y2 = (Lightning_bound_y1 + Lightning_bound_y2) / 2 + short(mRandom % ((Lightning_bound_y2 - Lightning_bound_y1) / 2));
+ 			init_lightning = 1;
+ 		}
+ 
+@@ -1074,8 +1090,8 @@ void ZoomMatrix::blacken_unexplored()
+ 
+ 	int leftLoc = top_x_loc;
+ 	int topLoc = top_y_loc;
+-	int rightLoc = leftLoc + disp_x_loc - 1;
+-	int bottomLoc = topLoc + disp_y_loc - 1;
++	int rightLoc = std::min(leftLoc + disp_x_loc - 1, max_x_loc - 1);
++	int bottomLoc = std::min(topLoc + disp_y_loc - 1, max_y_loc - 1);
+ 	int scrnY, scrnX;		// screen coordinate
+ 	int x, y;				// x,y Location
+ 	Location *thisRowLoc, *northRowLoc, *southRowLoc;
+@@ -1150,8 +1166,8 @@ void ZoomMatrix::blacken_fog_of_war()
+ {
+ 	int leftLoc = top_x_loc;
+ 	int topLoc = top_y_loc;
+-	int rightLoc = leftLoc + disp_x_loc - 1;
+-	int bottomLoc = topLoc + disp_y_loc - 1;
++	int rightLoc = std::min(leftLoc + disp_x_loc - 1, max_x_loc - 1);
++	int bottomLoc = std::min(topLoc + disp_y_loc - 1, max_y_loc - 1);
+ 	int scrnY, scrnX;		// screen coordinate
+ 	int x, y;				// x,y Location
+ 	Location *thisRowLoc, *northRowLoc, *southRowLoc;
+@@ -1276,8 +1292,8 @@ void ZoomMatrix::draw_objects()
+   
+ 	int zoomXLoc1 = world.zoom_matrix->top_x_loc - DRAW_OUTSIDE;
+ 	int zoomYLoc1 = world.zoom_matrix->top_y_loc - DRAW_OUTSIDE;
+-	int zoomXLoc2 = world.zoom_matrix->top_x_loc + world.zoom_matrix->disp_x_loc - 1 + DRAW_OUTSIDE;
+-	int zoomYLoc2 = world.zoom_matrix->top_y_loc + world.zoom_matrix->disp_y_loc - 1 + DRAW_OUTSIDE;
++	int zoomXLoc2 = std::min(world.zoom_matrix->top_x_loc + world.zoom_matrix->disp_x_loc - 1 + DRAW_OUTSIDE, max_x_loc - 1);
++	int zoomYLoc2 = std::min(world.zoom_matrix->top_y_loc + world.zoom_matrix->disp_y_loc - 1 + DRAW_OUTSIDE, max_y_loc - 1);
+ 
+ 	if( zoomXLoc1 < 0)
+ 		zoomXLoc1 = 0;
+diff --git a/src/imgfun/generic/IB2.cpp b/src/imgfun/generic/IB2.cpp
+index adf895d..98af76e 100644
+--- a/src/imgfun/generic/IB2.cpp
++++ b/src/imgfun/generic/IB2.cpp
+@@ -61,3 +61,35 @@ void IMGcall IMGblt2(char*imageBuf,int pitch,int x,int y,int bitmapWidth,int bit
+ 	}
+ }
+ //----------- END OF FUNCTION IMGblt2 ----------
++
++//----------- BEGIN OF FUNCTION IMGblt3 ------------
++void IMGcall IMGblt3(char*imageBuf, int pitch, int height, int x, int y, int bitmapWidth, int bitmapHeight, char*bitmapBuf)
++{
++	int destline = y * pitch + x;
++	int esi = 0;		// [Alex] NOTE: bitmapBuf is actually the RAW bitmap data, ignore the comments above!!
++	int destHeight = height;
++	int destWidth = pitch;
++	float scalewidth = ((float)bitmapWidth / destWidth);
++	float scaleHeight = ((float)bitmapHeight/ destHeight);
++
++	int row = 0;
++	for (int j = 0; j < destHeight; )
++	{
++		for (int i = 0; i < destWidth; ++i)
++		{
++			int lineIdx2 = scalewidth * i;
++			unsigned char color = ((unsigned char*)bitmapBuf)[esi + lineIdx2];
++			imageBuf[destline + i] = color;
++		}
++		int newRow = j * scaleHeight;
++		if (row != newRow)
++		{
++			row = newRow;
++			esi += bitmapWidth;
++		}
++		destline += pitch;
++		j++;
++
++	}
++}
++//----------- END OF FUNCTION IMGblt3 ----------
+\ No newline at end of file
+diff --git a/src/imgfun/generic/IB_A.cpp b/src/imgfun/generic/IB_A.cpp
+index 7f295ca..61b61d7 100644
+--- a/src/imgfun/generic/IB_A.cpp
++++ b/src/imgfun/generic/IB_A.cpp
+@@ -64,10 +64,29 @@ void IMGcall IMGbltArea(char* imageBuf,int pitch, int desX, int desY, char* bitm
+ 	int width = srcX2-srcX1+1;
+ 	int height = srcY2-srcY1+1;
+ 
+-	for (int j=0; j<height; ++j, dest+=pitch, src+=bitmapWidth)
++	for (int j=0; j<height; ++j, dest+=pitch, src+= bitmapWidth)
+ 	{
+-		memcpy( &imageBuf[ dest ], &bitmapBuf[ src ], width );
++		for (int i = 0; i < width; ++i)
++		{
++			unsigned char color = ((unsigned char*)bitmapBuf)[src + i];
++			imageBuf[dest + i] = color;
++		}
+ 	}
+ }
+-
+ //----------- END OF FUNCTION IMGbltArea ----------//
++
++//----------- BEGIN OF FUNCTION IMGbltAreaStretch ------------
++void IMGcall IMGbltAreaStretch(char* imageBuf, int pitch, int desX, int desY, char* bitmapBuf, int srcX1, int srcY1, int srcX2, int srcY2)
++{
++	int dest = (desY + srcY1) * pitch + (desX + srcX1);
++	int bitmapWidth = ((unsigned char*)bitmapBuf)[0] + (((unsigned char*)bitmapBuf)[1] << 8);
++	int src = 4 + srcY1 * bitmapWidth + srcX1;	// 4 bytes are header fields (width, height)
++	int width = srcX2 - srcX1 + 1;
++	int height = srcY2 - srcY1 + 1;
++
++	for (int j = 0; j < height; ++j, dest += pitch, src += bitmapWidth)
++	{
++		memcpy(&imageBuf[dest], &bitmapBuf[src], width);
++	}
++}
++//----------- END OF FUNCTION IMGbltAreaStretch ----------//
+\ No newline at end of file

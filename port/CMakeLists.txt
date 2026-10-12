@@ -59,8 +59,7 @@ endforeach()
 add_subdirectory("${SK_TP}/openal-soft" openal-soft)
 
 # ---------------------------------------------------------------------------
-# enet: static library. The game compiles its multiplayer wrapper against stubs
-# (USE_ENET undefined, multiplayer is out of scope), so nothing links it yet.
+# enet: static library, linked into libmain.so (USE_ENET, LAN multiplayer; no libcurl).
 # ---------------------------------------------------------------------------
 add_subdirectory("${SK_TP}/enet" enet)
 
@@ -79,8 +78,11 @@ set(PORT_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_android_video.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_glob.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_touch.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_camera.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_cheats.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_text.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_lifecycle.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_net.cpp"
 )
 
 add_library(main SHARED ${_game_sources} ${PORT_SOURCES})
@@ -88,17 +90,18 @@ add_library(main SHARED ${_game_sources} ${PORT_SOURCES})
 target_include_directories(main PRIVATE
     "${SK_SRC}/include"
     "${CMAKE_CURRENT_LIST_DIR}/android"
+    "${SK_TP}/enet/include"
 )
 
 # Defines replicate the Linux autotools build (docs/AUDIT.md section I3) explicitly.
-# Deliberately NOT defined: USE_ASM, HAVE_KNOWN_BUILD, USE_ENET, HAVE_LIBCURL, ENABLE_NLS,
+# Deliberately NOT defined: USE_ASM, HAVE_KNOWN_BUILD, HAVE_LIBCURL, ENABLE_NLS,
 # USE_WINDOWS, USE_FHS, ENABLE_INTRO_VIDEO.
 target_compile_definitions(main PRIVATE
     USE_SDL
     USE_POSIX
     USE_OPENAL
+    USE_ENET
     NO_MEM_CLASS
-    DISABLE_MULTI_PLAYER
     REGISTER=
     HAVE_SETENV
     HAVE_STRINGS_STRCASECMP
@@ -120,9 +123,10 @@ set_target_properties(main PROPERTIES
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS ON
 )
-target_link_libraries(main PRIVATE SDL2 OpenAL log android)
-add_dependencies(main enet)  # build the (currently unlinked) static enet too
+target_link_libraries(main PRIVATE SDL2 OpenAL enet log android)
 
 # Upstream sources are 1997-era code and very noisy: silence them. Warnings stay on for port/.
-set_source_files_properties(${_game_sources} PROPERTIES COMPILE_OPTIONS "-w")
+# -Wno-c++11-narrowing: HD (patches/hd) uses runtime values in braced initialisers that narrow to short
+# (e.g. {6+SWORD1_X,...}); clang makes that an error by default. Game sources only, never port/.
+set_source_files_properties(${_game_sources} PROPERTIES COMPILE_OPTIONS "-w;-Wno-c++11-narrowing")
 set_source_files_properties(${PORT_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")

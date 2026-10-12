@@ -1,6 +1,6 @@
 # Seven Kingdoms: Ancient Adversaries for Android
 
-![Seven Kingdoms: Ancient Adversaries gameplay](docs/images/gameplay-naval.png)
+![Seven Kingdoms: Ancient Adversaries in widescreen](docs/images/gameplay-wide.png)
 
 A native Android port of **Seven Kingdoms: Ancient Adversaries**, Trevor Chan's 1997 real-time strategy
 game of trade, diplomacy, espionage and war. It is built from the official **7kfans 2.15.7 GPL source**:
@@ -31,17 +31,22 @@ where you touch.
 
 | Gesture | Action |
 |---|---|
-| Tap | Select / click |
-| Long-press (hold about 0.4 s; a ring grows) | Right click: move, attack, assign |
+| Tap | Select. With your units selected, a tap gives the order the game would give for a right click there: move, attack, station in a building, settle in a town, board a ship. Tapping one of your own units still selects it |
+| Long-press, then lift (a ring grows, then holds) | The opposite of a tap: select the building a tap would have sent your units into, or give an order where a tap would select |
+| Long-press, then drag | Box-select units |
+| One-finger drag on the map | Move around the map (it follows your finger; flick to glide) |
+| Pinch / spread on the map | Zoom between 1× and 2× |
 | Two-finger tap | Right click at the midpoint |
-| One-finger drag | Box-select units |
-| Two-finger drag | Scroll the map |
 | Back | In-game menu (Esc) |
+
+On-screen keyboard: tapping a name field (new game, save game) opens the phone's keyboard; Enter closes it.
 
 **Toolbar.** The game is 4:3, so on a phone it has black bars on both sides. The right-hand bar holds
 buttons for keys that have no mouse equivalent: **Pause**, **Slower**, **Faster**, **K** (jump to your
-king), **G** (jump to your general) and **D** (open the oldest diplomatic message). On a 4:3 tablet the
-toolbar is a strip that opens from a handle in the top-left corner.
+king), **G** (jump to your general), **D** (open the oldest diplomatic message), **X** (deselect), the
+magnifier (reset zoom) and **1** to **5** (control groups: tap to select the group, hold to save the current
+selection as that group). On a 4:3 tablet the toolbar is a strip that opens from a handle in the top-left
+corner; in the widescreen build it opens from a handle in the top bar.
 
 **Cheats.** Tap **C** on the toolbar to open the cheats panel in the left-hand bar. Switch **Cheats ON**
 (it types the game's own Shift + `111 222 333` code, then tap away the game's "Cheat Mode Enabled" message)
@@ -57,7 +62,10 @@ and the buttons unlock:
 | TOWN POP +10 | Ten more people in the selected town |
 | PRAYER MAX | Fill the selected Seat of Power |
 | FIRM FULL HP | Selected building to full hit points |
-| COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the selected unit's combat, skill or spying level |
+| COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the combat, skill or spying level of every selected unit of yours (up to 100) |
+| REPUTATION +10 / -10 | Your reputation up or down by 10 (limits -100 to 100) |
+| RACE POP +10 / -10 | 10 more or fewer people of the race selected in the town you have open (not the same as TOWN POP, which adds a random race) |
+| HEAL ALL | Every living unit you own to full hit points, and your buildings too (not those still under construction) |
 
 These are exactly the cheats built into the game (full reference: [docs/CHEATS.md](docs/CHEATS.md)). They
 work in single player only, and the game marks a cheated game "(Cheated)" on its final score. Switching
@@ -67,15 +75,33 @@ the panel OFF locks the buttons; the game itself has no way to turn cheat mode o
 back the game is still paused: tap **Pause** to carry on. The game's own autosave runs every two in-game
 months; save manually before closing the app if you want to keep your exact position.
 
-![In-game menu](docs/images/ingame-menu.png)
+![Main menu](docs/images/main-menu.png)
 
 ## What's different from the PC version
 
-- Single player only. Online/LAN multiplayer is disabled: upstream supports multiplayer on x86 only, and an
-  ARM build would fall out of sync with PC players.
+- Single player plus experimental Wi-Fi multiplayer between phones running this same app (see
+  [Multiplayer](#multiplayer-wi-fi-experimental)). No PC players, and no 7kfans.com online service or leaderboard
+  (they need libcurl, which is not built in).
 - English only.
 - Runs fullscreen with the system bars hidden (swipe from an edge to show them briefly).
 - Long-press the app icon and choose **Licences** to read the game and music licences.
+
+## Multiplayer (Wi-Fi, experimental)
+
+Two or more phones on the same Wi-Fi network (or one phone's hotspot) can play the game's own multiplayer.
+Both need this same app build. Open **Multiplayer**, then **New game**: pick **Local Area Network** (the host
+creates the game, the others see it in the list) or **Enter Address** (type the host's address; the host's
+screens show "Your address: ..."). Game traffic uses UDP port 19255 and discovery UDP 19383. Keep the app open:
+leaving it for more than a minute hands your kingdom to the computer. Cheats are locked in multiplayer.
+It has **not been tested on two phones yet**; phones on different Android versions may also fall out of sync.
+Details, limits and the two-phone test checklist are in [docs/multiplayer/README.md](docs/multiplayer/README.md).
+
+## Widescreen (experimental, `feature/widescreen`)
+
+A branch in progress makes the in-game view fill wide phones. The map and panel render at a wide logical size
+picked from the screen (for example 1344x610 on a 2712x1220 phone); menus stay 4:3 and centred. The branch is
+unreleased and has **not been run on a device yet**. The code is adapted from kresimirv/7kaa_HD (GPL v2).
+Details, patch list and the on-device test checklist are in [docs/widescreen/README.md](docs/widescreen/README.md).
 
 ## Building from source
 
@@ -93,7 +119,7 @@ scripts/build.sh               # debug APK  -> android/app/build/outputs/apk/deb
 scripts/build.sh release       # signed APK -> android/app/build/outputs/apk/release/app-release.apk
 ```
 
-`build.sh` copies the pristine game source to `build/`, applies `patches/7kaa/*.patch`, stages the game
+`build.sh` copies the pristine game source to `build/`, applies `patches/7kaa/*.patch` (and `patches/sdl/*.patch` to a copy of SDL's Java half), stages the game
 data and music as APK assets, and runs Gradle. Upstream sources under `third_party/` are never edited.
 
 Release signing uses a keystore kept outside the repository (`~/.android/7kaa-release.jks` plus
@@ -110,7 +136,12 @@ with a different key cannot update an installed copy.
 | `patches/7kaa/0004` | Touch input layer and toolbar (`port/android/sk_touch.cpp`) |
 | `patches/7kaa/0005` | Pause game and audio in the background (`port/android/sk_lifecycle.cpp`) |
 | `patches/7kaa/0006` | Hide the game's software cursor |
-| `patches/7kaa/0008` | Cheats panel game-state hook (`port/android/sk_cheats.cpp`) |
+| `patches/7kaa/0008` | Cheats panel game-state hook and multi-unit cheats (`port/android/sk_cheats.cpp`) |
+| `patches/7kaa/0009` | Phone keyboard for the game's text fields (`port/android/sk_text.cpp`) |
+| `patches/7kaa/0010` | Map camera: drag to pan, pinch to zoom, minimap box (`port/android/sk_camera.cpp`) |
+| `patches/7kaa/0011` | Smart tap (asks the game's own cursor logic whether a tap is an order), toolbar group and deselect actions |
+| `patches/7kaa/0012` | LAN multiplayer: menu enabled, own-address line, Enter Address default, 60 s ENet peer timeout, MulticastLock hooks, match and out-of-sync notices (`port/android/sk_net.cpp`) |
+| `patches/sdl/0001` | Soft-keyboard Backspace on Android 10+ (Gboard): the IME buffer starts empty while the game field is pre-filled, so delete and DEL key events are forwarded to the game as backspaces (`SDLInputConnection`) |
 | `port/CMakeLists.txt` | Builds SDL2, openal-soft (OpenSL ES backend), enet and the game as `libmain.so` |
 | `android/` | Gradle project, activity (fullscreen, keep screen on), Licences screen |
 
@@ -126,8 +157,9 @@ of the upstream code, and `docs/CONTRACT.md` is the build specification the port
 - **Music** © 1997 Bjørn Lynne and Enlight Software Ltd. It is not GPL. Its notice allows free
   redistribution for use with Seven Kingdoms, provided the set is complete and unmodified, the authors are
   credited and the notice is kept. The APK ships all 10 tracks unmodified with `COPYING-Music.txt`.
+- **Widescreen code** (`feature/widescreen`) is adapted from [kresimirv/7kaa_HD](https://github.com/kresimirv/7kaa_HD) (GPL v2).
 - **Libraries:** [SDL 2](https://www.libsdl.org/) (zlib), [openal-soft](https://openal-soft.org/)
   (LGPL-2.0, dynamically linked), [enet](http://enet.bespin.org/) (MIT). Versions and checksums are in
   `third_party/VERSIONS.md`.
-- **Screenshots** above are from the game's official [Flathub listing](https://flathub.org/apps/com.sevenkfans.sevenkaa)
-  (PC version).
+- **Screenshots** above are from [kresimirv/7kaa_HD](https://github.com/kresimirv/7kaa_HD) (GPL v2), cropped to a
+  phone-shaped frame.

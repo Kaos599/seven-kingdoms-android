@@ -15,6 +15,7 @@
 #include <string.h>
 #include <SDL.h>
 #include "sk_cheats.h"
+#include "sk_text.h"
 
 // ---------------------------------------------------------------------------------------------
 // Tunables (sizes are fractions of the screen height unless noted)
@@ -30,8 +31,11 @@ static const int    LABEL_MAX_CHARS       = 10;     // longest label line, for t
 static const Uint32 KEY_GAP_MS            = 70;     // spacing between injected key presses
 static const Uint32 FLASH_MS              = 450;    // visual confirmation after a one-shot cheat
 
-static const int    CHEAT_COUNT           = 12;
-static const int    COLS                  = 2;
+static const int    CHEAT_COUNT           = 17;
+// Button columns. Two in the left margin (narrow, tall), three in the wide panel and the overlay
+// (wide enough for the labels, and fewer rows so every button stays >= 44 logical px tall).
+static const int    COLS_MARGIN           = 2;
+static const int    COLS_WIDE             = 3;
 
 static const Uint8 COL_PANEL[4]      = { 10, 12, 22, 225 };
 static const Uint8 COL_PANEL_EDGE[4] = { 235, 225, 170, 200 };
@@ -47,31 +51,40 @@ static const Uint8 COL_TEXT_OFF[4]   = { 125, 125, 130, 230 };
 static const Uint8 COL_TEXT_DARK[4]  = { 20, 20, 30, 255 };
 
 // ---------------------------------------------------------------------------------------------
-// Cheat table: one entry per key in Sys::detect_cheat_key (OSYS.cpp:1860-1996)
+// Cheat table: one entry per key in Sys::detect_cheat_key (OSYS.cpp:1860-1996), plus the scenario keys
+// r/e/w/q and HEAL ALL, which are called directly (OSYS.cpp:2230-2288 for the keys)
 // ---------------------------------------------------------------------------------------------
-enum Kind { K_ONESHOT, K_UNDIE, K_FAST };
+// K_UNIT: applied by sk_cheats_unit_cheat to all selected units.
+// K_REP / K_RACE / K_HEAL: game-side functions in the patched OSYS.cpp, called directly (no key injection).
+enum Kind { K_ONESHOT, K_UNDIE, K_FAST, K_UNIT, K_REP, K_RACE, K_HEAL };
 
 struct CheatDef
 {
 	const char *line1;
 	const char *line2;     // for toggles this is the stem; " ON"/" OFF" is appended
-	SDL_Keycode key;
+	SDL_Keycode key;       // 0 for the direct-call kinds (K_REP, K_RACE, K_HEAL)
 	Kind kind;
+	int arg;               // K_UNIT: argument of sk_cheats_unit_cheat; K_REP / K_RACE: +10 or -10
 };
 
 static const CheatDef CHEATS[CHEAT_COUNT] = {
-	{ "CASH",     "+1000",      SDLK_c,            K_ONESHOT },  // 'c'  add_cheat(1000)
-	{ "FOOD",     "+1000",      SDLK_BACKSLASH,    K_ONESHOT },  // '\'  add_food(1000)
-	{ "ALL TECH", "AND GODS",   SDLK_n,            K_ONESHOT },  // 'n'
-	{ "REVEAL",   "MAP",        SDLK_SLASH,        K_ONESHOT },  // '/'
-	{ "TOWN",     "POP +10",    SDLK_SEMICOLON,    K_ONESHOT },  // ';'  needs a selected town
-	{ "IMMORTAL", "KING",       SDLK_u,            K_UNDIE },    // 'u'  toggle
-	{ "PRAYER",   "MAX",        SDLK_EQUALS,       K_ONESHOT },  // '='  needs a selected Seat of Power base
-	{ "FIRM",     "FULL HP",    SDLK_MINUS,        K_ONESHOT },  // '-'  needs a selected firm
-	{ "FAST",     "BUILD",      SDLK_z,            K_FAST },     // 'z'  toggle
-	{ "COMBAT",   "+20",        SDLK_LEFTBRACKET,  K_ONESHOT },  // '['  needs a selected unit
-	{ "SKILL",    "+20",        SDLK_RIGHTBRACKET, K_ONESHOT },  // ']'  needs a selected unit
-	{ "SPY",      "SKILL +20",  SDLK_QUOTE,        K_ONESHOT },  // '\'' needs a selected spy unit
+	{ "CASH",     "+1000",      SDLK_c,            K_ONESHOT, 0 },  // 'c'  add_cheat(1000)
+	{ "FOOD",     "+1000",      SDLK_BACKSLASH,    K_ONESHOT, 0 },  // '\'  add_food(1000)
+	{ "ALL TECH", "AND GODS",   SDLK_n,            K_ONESHOT, 0 },  // 'n'
+	{ "REVEAL",   "MAP",        SDLK_SLASH,        K_ONESHOT, 0 },  // '/'
+	{ "TOWN",     "POP +10",    SDLK_SEMICOLON,    K_ONESHOT, 0 },  // ';'  needs a selected town
+	{ "IMMORTAL", "KING",       SDLK_u,            K_UNDIE, 0 },    // 'u'  toggle
+	{ "PRAYER",   "MAX",        SDLK_EQUALS,       K_ONESHOT, 0 },  // '='  needs a selected Seat of Power base
+	{ "FIRM",     "FULL HP",    SDLK_MINUS,        K_ONESHOT, 0 },  // '-'  needs a selected firm
+	{ "FAST",     "BUILD",      SDLK_z,            K_FAST, 0 },     // 'z'  toggle
+	{ "COMBAT",   "+20",        SDLK_LEFTBRACKET,  K_UNIT, 0 },     // '['  every selected own unit (OSYS.cpp detect_cheat_key)
+	{ "SKILL",    "+20",        SDLK_RIGHTBRACKET, K_UNIT, 1 },     // ']'  every selected own unit
+	{ "SPY",      "SKILL +20",  SDLK_QUOTE,        K_UNIT, 2 },     // '\'' every selected own spy
+	{ "REPUTATION", "+10",      SDLK_UNKNOWN,      K_REP, 10 },     // 'r'  scenario key, sk_cheats_reputation(+10)
+	{ "REPUTATION", "-10",      SDLK_UNKNOWN,      K_REP, -10 },    // 'e'  scenario key, sk_cheats_reputation(-10)
+	{ "RACE POP", "+10",        SDLK_UNKNOWN,      K_RACE, 10 },    // 'w'  scenario key, race of the selected town (sk_cheats_race_pop)
+	{ "RACE POP", "-10",        SDLK_UNKNOWN,      K_RACE, -10 },   // 'q'  scenario key, same race logic
+	{ "HEAL ALL", "",           SDLK_UNKNOWN,      K_HEAL, 0 },     // every own unit and firm (sk_cheats_heal_all)
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -95,6 +108,8 @@ static SDL_FingerID g_press_id = 0;
 static bool   g_pressing = false;
 
 static int    g_flash_idx = -1;
+static int    g_flash_count = -1;   // K_UNIT: units changed by the last press
+static char   g_flash_msg[24] = "";  // K_REP / K_RACE / K_HEAL: second line shown while flashing
 static Uint32 g_flash_at = 0;
 
 // ---------------------------------------------------------------------------------------------
@@ -113,8 +128,10 @@ struct Layout
 static void compute_layout(const SkCheatsView &v, Layout *L)
 {
 	int margin = (int)v.game_x;
-	L->in_margin = margin >= (int)(v.out_h * PANEL_MIN_MARGIN_FRAC);
-	if (L->in_margin)
+	L->in_margin = !v.wide && margin >= (int)(v.out_h * PANEL_MIN_MARGIN_FRAC);
+	if (v.wide)   // left part of the map view, below the top bar, clear of the right block (set by sk_touch)
+		L->panel = Rect{ (int)v.wide_x, (int)v.wide_y, (int)v.wide_w, (int)v.wide_h };
+	else if (L->in_margin)
 		L->panel = Rect{ 0, 0, margin, v.out_h };
 	else
 	{
@@ -128,20 +145,25 @@ static void compute_layout(const SkCheatsView &v, Layout *L)
 	int gap = (int)(v.out_h * PANEL_GAP_FRAC) + 1;
 	int ix = L->panel.x + pad, iy = L->panel.y + pad;
 	int iw = L->panel.w - 2 * pad, ih = L->panel.h - 2 * pad;
-	int rows = CHEAT_COUNT / COLS;
+	int cols = L->in_margin ? COLS_MARGIN : COLS_WIDE;
+	int rows = (CHEAT_COUNT + cols - 1) / cols;
 	int items = rows + 2;   // master + status + rows
 	float units = (float)rows + 1.0f + STATUS_ROW_RATIO;
 	int rowh = (int)((ih - (items - 1) * gap) / units);
 	int statush = (int)(rowh * STATUS_ROW_RATIO);
-	int colw = (iw - (COLS - 1) * gap) / COLS;
+	int colw = (iw - (cols - 1) * gap) / cols;
 
 	L->master = Rect{ ix, iy, iw, rowh };
 	L->status = Rect{ ix, iy + rowh + gap, iw, statush };
 	int y0 = L->status.y + statush + gap;
 	for (int i = 0; i < CHEAT_COUNT; i++)
 	{
-		int c = i % COLS, r = i / COLS;
-		L->btn[i] = Rect{ ix + c * (colw + gap), y0 + r * (rowh + gap), colw, rowh };
+		int c = i % cols, r = i / cols;
+		int w = colw;
+		// The last button takes the free columns of a short last row (HEAL ALL spans the row).
+		if (i == CHEAT_COUNT - 1)
+			w = (cols - c) * colw + (cols - c - 1) * gap;
+		L->btn[i] = Rect{ ix + c * (colw + gap), y0 + r * (rowh + gap), w, rowh };
 	}
 
 	// One text scale for all cheat labels: widest label must fit the width, two lines the height.
@@ -215,6 +237,7 @@ void sk_cheats_reset_touch(void) { g_pressing = false; }
 
 void sk_cheats_update(SDL_Window *window)
 {
+	sk_text_update();   // per-frame hook for the text-field keyboard (sk_text.cpp); sk_touch.cpp is not ours to edit
 	refresh_state();
 	Uint32 now = SDL_GetTicks();
 
@@ -293,6 +316,37 @@ static void activate(int idx)
 	int i = idx - 1;
 	if (!buttons_enabled())
 		return;
+	if (CHEATS[i].kind == K_UNIT)
+	{
+		g_flash_count = sk_cheats_unit_cheat(CHEATS[i].arg);
+		g_flash_idx = idx;
+		g_flash_at = SDL_GetTicks();
+		return;
+	}
+	if (CHEATS[i].kind == K_REP || CHEATS[i].kind == K_RACE || CHEATS[i].kind == K_HEAL)
+	{
+		// Direct calls into the patched game code (no key injection): they are synchronous.
+		if (CHEATS[i].kind == K_REP)
+			SDL_strlcpy(g_flash_msg, sk_cheats_reputation(CHEATS[i].arg) ? "DONE" : "NOT NOW", sizeof(g_flash_msg));
+		else if (CHEATS[i].kind == K_RACE)
+		{
+			int r = sk_cheats_race_pop(CHEATS[i].arg);
+			const char *m = r == SK_CHEAT_DONE ? "DONE" : r == SK_CHEAT_NO_TOWN ? "NO TOWN"
+			              : r == SK_CHEAT_NO_RACE ? "NO RACE" : "NOT NOW";
+			SDL_strlcpy(g_flash_msg, m, sizeof(g_flash_msg));
+		}
+		else
+		{
+			int n = sk_cheats_heal_all();
+			if (n > 0)
+				SDL_snprintf(g_flash_msg, sizeof(g_flash_msg), "%d %s", n, n == 1 ? "UNIT" : "UNITS");
+			else
+				SDL_strlcpy(g_flash_msg, "NO UNIT", sizeof(g_flash_msg));
+		}
+		g_flash_idx = idx;
+		g_flash_at = SDL_GetTicks();
+		return;
+	}
 	enqueue(CHEATS[i].key, false);
 	if (CHEATS[i].kind == K_ONESHOT)
 	{
@@ -543,7 +597,16 @@ void sk_cheats_draw(SDL_Renderer *r, const SkCheatsView *v)
 		frame(r, L.btn[i], edge);
 
 		char l2[24];
-		if (c.kind == K_ONESHOT)
+		if (c.kind == K_UNIT && flash)
+		{
+			if (g_flash_count > 0)
+				SDL_snprintf(l2, sizeof(l2), "%d %s", g_flash_count, g_flash_count == 1 ? "UNIT" : "UNITS");
+			else
+				SDL_snprintf(l2, sizeof(l2), "NO UNIT");
+		}
+		else if (c.kind == K_REP || c.kind == K_RACE || c.kind == K_HEAL)
+			SDL_snprintf(l2, sizeof(l2), "%s", flash ? g_flash_msg : c.line2);
+		else if (c.kind == K_ONESHOT || c.kind == K_UNIT)
 			SDL_snprintf(l2, sizeof(l2), "%s", flash ? "SENT" : c.line2);
 		else
 			SDL_snprintf(l2, sizeof(l2), "%s %s", c.line2, on ? "ON" : "OFF");
