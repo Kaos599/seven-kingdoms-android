@@ -1,6 +1,6 @@
 # Seven Kingdoms: Ancient Adversaries for Android
 
-![Seven Kingdoms: Ancient Adversaries gameplay](docs/images/gameplay-naval.png)
+![Seven Kingdoms: Ancient Adversaries in widescreen](docs/images/gameplay-wide.png)
 
 A native Android port of **Seven Kingdoms: Ancient Adversaries**, Trevor Chan's 1997 real-time strategy
 game of trade, diplomacy, espionage and war. It is built from the official **7kfans 2.15.7 GPL source**:
@@ -63,6 +63,9 @@ and the buttons unlock:
 | PRAYER MAX | Fill the selected Seat of Power |
 | FIRM FULL HP | Selected building to full hit points |
 | COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the combat, skill or spying level of every selected unit of yours (up to 100) |
+| REPUTATION +10 / -10 | Your reputation up or down by 10 (limits -100 to 100) |
+| RACE POP +10 / -10 | 10 more or fewer people of the race selected in the town you have open (not the same as TOWN POP, which adds a random race) |
+| HEAL ALL | Every living unit you own to full hit points, and your buildings too (not those still under construction) |
 
 These are exactly the cheats built into the game (full reference: [docs/CHEATS.md](docs/CHEATS.md)). They
 work in single player only, and the game marks a cheated game "(Cheated)" on its final score. Switching
@@ -72,15 +75,26 @@ the panel OFF locks the buttons; the game itself has no way to turn cheat mode o
 back the game is still paused: tap **Pause** to carry on. The game's own autosave runs every two in-game
 months; save manually before closing the app if you want to keep your exact position.
 
-![In-game menu](docs/images/ingame-menu.png)
+![Main menu](docs/images/main-menu.png)
 
 ## What's different from the PC version
 
-- Single player only. Online/LAN multiplayer is disabled: upstream supports multiplayer on x86 only, and an
-  ARM build would fall out of sync with PC players.
+- Single player plus experimental Wi-Fi multiplayer between phones running this same app (see
+  [Multiplayer](#multiplayer-wi-fi-experimental)). No PC players, and no 7kfans.com online service or leaderboard
+  (they need libcurl, which is not built in).
 - English only.
 - Runs fullscreen with the system bars hidden (swipe from an edge to show them briefly).
 - Long-press the app icon and choose **Licences** to read the game and music licences.
+
+## Multiplayer (Wi-Fi, experimental)
+
+Two or more phones on the same Wi-Fi network (or one phone's hotspot) can play the game's own multiplayer.
+Both need this same app build. Open **Multiplayer**, then **New game**: pick **Local Area Network** (the host
+creates the game, the others see it in the list) or **Enter Address** (type the host's address; the host's
+screens show "Your address: ..."). Game traffic uses UDP port 19255 and discovery UDP 19383. Keep the app open:
+leaving it for more than a minute hands your kingdom to the computer. Cheats are locked in multiplayer.
+It has **not been tested on two phones yet**; phones on different Android versions may also fall out of sync.
+Details, limits and the two-phone test checklist are in [docs/multiplayer/README.md](docs/multiplayer/README.md).
 
 ## Widescreen (experimental, `feature/widescreen`)
 
@@ -126,6 +140,7 @@ with a different key cannot update an installed copy.
 | `patches/7kaa/0009` | Phone keyboard for the game's text fields (`port/android/sk_text.cpp`) |
 | `patches/7kaa/0010` | Map camera: drag to pan, pinch to zoom, minimap box (`port/android/sk_camera.cpp`) |
 | `patches/7kaa/0011` | Smart tap (asks the game's own cursor logic whether a tap is an order), toolbar group and deselect actions |
+| `patches/7kaa/0012` | LAN multiplayer: menu enabled, own-address line, Enter Address default, 60 s ENet peer timeout, MulticastLock hooks, match and out-of-sync notices (`port/android/sk_net.cpp`) |
 | `patches/sdl/0001` | Soft-keyboard Backspace on Android 10+ (Gboard): the IME buffer starts empty while the game field is pre-filled, so delete and DEL key events are forwarded to the game as backspaces (`SDLInputConnection`) |
 | `port/CMakeLists.txt` | Builds SDL2, openal-soft (OpenSL ES backend), enet and the game as `libmain.so` |
 | `android/` | Gradle project, activity (fullscreen, keep screen on), Licences screen |
@@ -146,5 +161,5 @@ of the upstream code, and `docs/CONTRACT.md` is the build specification the port
 - **Libraries:** [SDL 2](https://www.libsdl.org/) (zlib), [openal-soft](https://openal-soft.org/)
   (LGPL-2.0, dynamically linked), [enet](http://enet.bespin.org/) (MIT). Versions and checksums are in
   `third_party/VERSIONS.md`.
-- **Screenshots** above are from the game's official [Flathub listing](https://flathub.org/apps/com.sevenkfans.sevenkaa)
-  (PC version).
+- **Screenshots** above are from [kresimirv/7kaa_HD](https://github.com/kresimirv/7kaa_HD) (GPL v2), cropped to a
+  phone-shaped frame.

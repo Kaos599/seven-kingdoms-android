@@ -1,5 +1,5 @@
---- a/src/OSYS.cpp	2026-10-12 20:05:10
-+++ b/src/OSYS.cpp	2026-10-12 20:05:20
+--- a/src/OSYS.cpp
++++ b/src/OSYS.cpp
 @@ -90,6 +90,9 @@
  #include <CmdLine.h>
  #include <FilePath.h>
@@ -10,7 +10,7 @@
  
  #include <dbglog.h>
  #ifdef USE_WINDOWS
-@@ -3197,3 +3200,92 @@
+@@ -3197,3 +3200,228 @@
  	return config_adv.race_random_list[num];
  }
  //--------- End of static function random_race ---------//
@@ -102,4 +102,140 @@
 +   return changed;
 +}
 +//--------- End of function sk_cheats_unit_cheat ---------//
++
++//-------- Begin of function sk_cheats_reputation --------//
++//
++// Android cheats panel: REPUTATION +10 (delta 10) / -10 (delta -10) for the player's nation.
++// Copied from the scenario cheat keys 'r' and 'e' in Sys::detect_scenario_cheat_key (OSYS.cpp:2270-2288):
++// the reputation field is changed directly (not through NationBase::change_reputation, which the keys
++// do not use), then clamped to -100..100. Gates as sk_cheats_unit_cheat. Returns 1 if applied, 0 if not.
++//
++int sk_cheats_reputation(int delta)
++{
++   SkCheatsGameState st;
++   sk_cheats_get_game_state(&st);
++   if( !st.can_cheat || !st.cheat_on )
++      return 0;
++
++   Nation* nationPtr = nation_array[nation_array.player_recno];
++
++   if( delta > 0 )            // same as case 'r'
++   {
++      nationPtr->reputation += 10;
++      if( nationPtr->reputation > 100 )
++         nationPtr->reputation = (float) 100;
++   }
++   else                       // same as case 'e'
++   {
++      nationPtr->reputation -= 10;
++      if( nationPtr->reputation < -100 )
++         nationPtr->reputation = (float) -100;
++   }
++
++   return 1;
++}
++//--------- End of function sk_cheats_reputation ---------//
++
++//-------- Begin of function sk_cheats_race_pop --------//
++//
++// Android cheats panel: RACE POP +10 (delta 10) / -10 (delta -10) for the race selected in the selected
++// town. Copied from the scenario cheat keys 'w' and 'q' in Sys::detect_scenario_cheat_key
++// (OSYS.cpp:2230-2268). The race is Town::get_selected_race() (OTOWNIF.cpp:2242), i.e. the race
++// browsed in the town's own race list, not the town's majority race. Same town check as the keys
++// (own town only). Returns SK_CHEAT_DONE, SK_CHEAT_NO_TOWN (no own town selected), SK_CHEAT_NO_RACE
++// (no race selected or that race has no people), or SK_CHEAT_NOOP (gates not met, nothing done).
++//
++int sk_cheats_race_pop(int delta)
++{
++   SkCheatsGameState st;
++   sk_cheats_get_game_state(&st);
++   if( !st.can_cheat || !st.cheat_on )
++      return SK_CHEAT_NOOP;
++
++   if( !town_array.selected_recno )
++      return SK_CHEAT_NO_TOWN;
++
++   Town* townPtr = town_array[town_array.selected_recno];
++   if( townPtr->nation_recno != nation_array.player_recno )
++      return SK_CHEAT_NO_TOWN;
++
++   int result = SK_CHEAT_NO_RACE;
++   int raceId = townPtr->get_selected_race();
++   int townRecno = townPtr->town_recno;   // kept: kill_town_people can delete the town (last people gone)
++
++   if( raceId && townPtr->race_pop_array[raceId-1] )
++   {
++      if( delta > 0 )         // same as case 'w'
++      {
++         townPtr->init_pop(raceId, 10, 100);
++      }
++      else                    // same as case 'q', but the loop test uses the saved recno so it never reads a deleted town
++      {
++         for( int j=10; j>0 && !town_array.is_deleted(townRecno); --j )
++            townPtr->kill_town_people(raceId);
++      }
++      result = SK_CHEAT_DONE;
++   }
++
++   // Deliberate deviation from the original 'q' key: that key calls auto_set_layout() unconditionally, which
++   // is a use-after-delete when the town was emptied and removed. Skip it for a deleted town (still DONE).
++   if( !town_array.is_deleted(townRecno) )
++      townPtr->auto_set_layout();
++   return result;
++}
++//--------- End of function sk_cheats_race_pop ---------//
++
++//-------- Begin of function sk_cheats_heal_all --------//
++//
++// Android cheats panel: HEAL ALL.
++// Units: every unit of the player's nation that is alive (same filter as sk_cheats_unit_cheat, but no
++// selection test). hit_points = max_hit_points, the same refill the game uses for the immortal king
++// (OUNIT.cpp:952-953).
++// Firms: every firm of the player's nation, not under construction. hit_points = max_hit_points, the
++// same as the FIRM FULL HP key (OSYS.cpp:1939-1945). Firms still under construction are skipped,
++// because the construction code completes a firm as soon as hit_points reaches max (OFIRM.cpp:1437),
++// which would finish the building instead of only refilling it (see docs/CHEATS.md).
++// Returns the number of units healed (firms are not counted). Gates as sk_cheats_unit_cheat.
++//
++int sk_cheats_heal_all(void)
++{
++   SkCheatsGameState st;
++   sk_cheats_get_game_state(&st);
++   if( !st.can_cheat || !st.cheat_on )
++      return 0;
++
++   int healed = 0;
++
++   for( int i=unit_array.size() ; i>0 ; i-- )
++   {
++      if( unit_array.is_deleted(i) )
++         continue;
++
++      Unit* unitPtr = unit_array[i];
++
++      if( unitPtr->hit_points<=0 || unitPtr->cur_action==SPRITE_DIE || unitPtr->action_mode==ACTION_DIE )
++         continue;
++      if( !unitPtr->is_own() )
++         continue;
++
++      unitPtr->hit_points = unitPtr->max_hit_points;
++      healed++;
++   }
++
++   for( int i=firm_array.size() ; i>0 ; i-- )
++   {
++      if( firm_array.is_deleted(i) )
++         continue;
++
++      Firm* firmPtr = firm_array[i];
++
++      if( firmPtr->nation_recno != nation_array.player_recno || firmPtr->under_construction )
++         continue;
++
++      firmPtr->hit_points = firmPtr->max_hit_points;
++   }
++
++   return healed;
++}
++//--------- End of function sk_cheats_heal_all ---------//
 +#endif
