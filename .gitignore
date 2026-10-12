@@ -1,0 +1,8 @@
+third_party/_downloads/
+build/
+.gradle/
+*.apk
+local.properties
+third_party/*
+!third_party/VERSIONS.md
+.cxx/
