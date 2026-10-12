@@ -113,8 +113,10 @@ struct Layout
 static void compute_layout(const SkCheatsView &v, Layout *L)
 {
 	int margin = (int)v.game_x;
-	L->in_margin = margin >= (int)(v.out_h * PANEL_MIN_MARGIN_FRAC);
-	if (L->in_margin)
+	L->in_margin = !v.wide && margin >= (int)(v.out_h * PANEL_MIN_MARGIN_FRAC);
+	if (v.wide)   // left part of the map view, below the top bar, clear of the right block (set by sk_touch)
+		L->panel = Rect{ (int)v.wide_x, (int)v.wide_y, (int)v.wide_w, (int)v.wide_h };
+	else if (L->in_margin)
 		L->panel = Rect{ 0, 0, margin, v.out_h };
 	else
 	{

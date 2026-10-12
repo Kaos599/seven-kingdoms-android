@@ -13,7 +13,7 @@
 void sk_android_prepare_data(void);
 
 // Force the video settings the Android build depends on: fullscreen + keep-aspect-ratio, so that
-// SDL_RenderSetLogicalSize(800, 600) letterboxes. Call after config_adv.init().
+// SDL_RenderSetLogicalSize(VGA_WIDTH, VGA_HEIGHT) letterboxes. Call after config_adv.init().
 void sk_android_apply_video_config(void);
 
 #endif // __ANDROID__

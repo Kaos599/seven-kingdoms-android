@@ -3,7 +3,7 @@
  *
  * Injection point: the game's own Mouse object (cursor position via Mouse::process_mouse_motion,
  * buttons via Mouse::add_event, map scroll via Mouse::process_scroll), NOT synthetic SDL mouse
- * events. The game keeps its own software cursor (Mouse::cur_x/cur_y, 800x600 logical space) and
+ * events. The game keeps its own software cursor (Mouse::cur_x/cur_y, logical space VGA_WIDTH x VGA_HEIGHT) and
  * reads button state from it, so feeding Mouse directly puts every click exactly under the finger
  * and needs no SDL mouse state, grab or warp. Keys (Esc from Back, toolbar hotkeys) are pushed as
  * SDL_KEYDOWN/UP so they take the game's normal keyboard path.
@@ -30,7 +30,7 @@
 // Tunables
 // ---------------------------------------------------------------------------------------------
 static const Uint32 LONG_PRESS_MS       = 400;   // hold time for a right click
-static const float  TOUCH_SLOP_LOGICAL  = 12.0f; // max movement for a tap/long-press, in game pixels (800x600)
+static const float  TOUCH_SLOP_LOGICAL  = 12.0f; // max movement for a tap/long-press, in game pixels (scale ~2 on every supported phone)
 static const Uint32 TWO_TAP_MAX_MS      = 350;   // two-finger tap must be shorter than this
 static const Uint32 BUTTON_HOLD_MS      = 60;    // injected click: press-to-release delay (lets polled button state see it)
 static const float  SCROLL_PX_PER_CELL  = 32.0f; // map cell size in the zoom window (ZOOM_LOC_WIDTH/HEIGHT)
@@ -44,8 +44,18 @@ static const float  RING_MAX_FRAC       = 0.07f; // long-press ring radius at 40
 static const Uint32 RING_DELAY_MS       = 120;   // ring appears after this hold time (taps stay clean)
 static const Uint32 RING_FLASH_MS       = 260;   // confirmation flash after a right click
 
-static const int GAME_W = 800;
-static const int GAME_H = 600;
+// 4:3 base size. Used (a) as the logical size when config.win_* is not set yet, and (b) to tell wide
+// mode (logical size differs from it) from the unchanged 4:3 mode. Menus stay this size when centred.
+static const int BASE_W = 800;
+static const int BASE_H = 600;
+
+// Wide mode (logical size != 4:3 base). Logical game pixels; the map view starts below the top bar
+// (ZOOM_Y1) and ends at config.zoom_width, where the right block (map-mode buttons, minimap, panel) begins.
+static const int WIDE_TOP_BAR_H      = 56;  // ZOOM_Y1: top bar height
+static const int WIDE_BTN_LOGICAL    = 50;  // handle / strip button size (~100 physical px at scale 2)
+static const int WIDE_GAP_LOGICAL    = 6;   // gap between strip buttons
+static const int WIDE_HANDLE_RIGHT_PAD = 8; // handle's right edge sits this far left of zoom_width
+static const float WIDE_PANEL_MAP_FRAC = 1.0f / 3.0f; // cheats panel width as a fraction of the map view (zoom_width)
 
 // ---------------------------------------------------------------------------------------------
 // State
@@ -89,6 +99,10 @@ struct Rect { int x, y, w, h; };
 struct Geometry
 {
 	int out_w, out_h;
+	int lw, lh;             // logical game size (VGA_WIDTH x VGA_HEIGHT), read at call time
+	bool wide;              // logical size differs from the 4:3 base: wide toolbar/cheats layout
+	bool in_game;           // a game is running (not a menu); only meaningful in wide mode
+	int zoom_w;             // config.zoom_width: map view width in game px (wide mode)
 	float scale;            // output px per game px
 	float gx, gy, gw, gh;   // game rect in output px
 	bool side;              // toolbar lives in the right margin
@@ -100,14 +114,32 @@ static bool get_geometry(Geometry *g)
 		return false;
 	if (SDL_GetRendererOutputSize(g_renderer, &g->out_w, &g->out_h) != 0 || g->out_w <= 0 || g->out_h <= 0)
 		return false;
-	float sx = (float)g->out_w / GAME_W;
-	float sy = (float)g->out_h / GAME_H;
+	g->lw = config.win_width;
+	g->lh = config.win_height;
+	if (g->lw <= 0 || g->lh <= 0)
+	{
+		g->lw = BASE_W;
+		g->lh = BASE_H;
+	}
+	g->wide = g->lw != BASE_W || g->lh != BASE_H;
+	g->zoom_w = config.zoom_width;
+	g->in_game = true;
+	if (g->wide)
+	{
+		SkCheatsGameState st;
+		sk_cheats_get_game_state(&st);
+		g->in_game = st.in_game != 0;
+		if (g->zoom_w <= 0 || g->zoom_w > g->lw)
+			g->zoom_w = g->lw;
+	}
+	float sx = (float)g->out_w / g->lw;
+	float sy = (float)g->out_h / g->lh;
 	g->scale = sx < sy ? sx : sy;
-	g->gw = GAME_W * g->scale;
-	g->gh = GAME_H * g->scale;
+	g->gw = g->lw * g->scale;
+	g->gh = g->lh * g->scale;
 	g->gx = (g->out_w - g->gw) / 2.0f;
 	g->gy = (g->out_h - g->gh) / 2.0f;
-	g->side = g->gx >= g->out_h * TOOLBAR_MIN_MARGIN_FRAC;
+	g->side = !g->wide && g->gx >= g->out_h * TOOLBAR_MIN_MARGIN_FRAC;
 	return true;
 }
 
@@ -116,11 +148,11 @@ static bool to_logical(const Geometry &g, float px, float py, int *lx, int *ly)
 {
 	float fx = (px - g.gx) / g.scale;
 	float fy = (py - g.gy) / g.scale;
-	bool inside = fx >= 0 && fx < GAME_W && fy >= 0 && fy < GAME_H;
+	bool inside = fx >= 0 && fx < g.lw && fy >= 0 && fy < g.lh;
 	if (fx < 0) fx = 0;
-	if (fx > GAME_W - 1) fx = GAME_W - 1;
+	if (fx > g.lw - 1) fx = (float)(g.lw - 1);
 	if (fy < 0) fy = 0;
-	if (fy > GAME_H - 1) fy = GAME_H - 1;
+	if (fy > g.lh - 1) fy = (float)(g.lh - 1);
 	*lx = (int)fx;
 	*ly = (int)fy;
 	return inside;
@@ -136,6 +168,18 @@ static SkCheatsView cheats_view(const Geometry &g)
 	v.game_w = g.gw;
 	int b = (int)(g.out_h * STRIP_BUTTON_FRAC);
 	v.strip_h = b + b / 8;   // overlay mode stays clear of the collapsible strip row
+	v.wide = g.wide ? 1 : 0;
+	if (g.wide)
+	{
+		// Wide panel: slides in over the left part of the map view, below the top bar, clear of the right block.
+		float top = WIDE_TOP_BAR_H * g.scale;
+		v.wide_x = g.gx;
+		v.wide_y = g.gy + top;
+		v.wide_w = g.zoom_w * WIDE_PANEL_MAP_FRAC * g.scale;
+		v.wide_h = g.gh - top;
+	}
+	else
+		v.wide_x = v.wide_y = v.wide_w = v.wide_h = 0;
 	return v;
 }
 
@@ -158,6 +202,26 @@ static const Item ITEMS[ITEM_COUNT] = {
 static int layout_items(const Geometry &g, Rect *items, Rect *handle)
 {
 	handle->w = 0;
+	if (g.wide)
+	{
+		// Menus (800x600 art centred in the wide frame): the toolbar's hotkeys do nothing there (pause, speed,
+		// king/general/diplomacy keys, cheats), and its natural spot would overlap the centred art. Hidden.
+		if (!g.in_game)
+			return 0;
+		// In game: handle in the top-bar stone filler, right of the date text and left of the right block.
+		int b = (int)(WIDE_BTN_LOGICAL * g.scale);
+		int gap = (int)(WIDE_GAP_LOGICAL * g.scale);
+		int hx = (int)(g.gx + (g.zoom_w - WIDE_HANDLE_RIGHT_PAD - WIDE_BTN_LOGICAL) * g.scale);
+		int hy = (int)(g.gy + (WIDE_TOP_BAR_H - WIDE_BTN_LOGICAL) * 0.5f * g.scale);
+		*handle = Rect{ hx, hy, b, b };
+		if (!g_strip_open)
+			return 0;
+		// The strip hangs downward from the handle over the map view (x < zoom_width, y >= top bar).
+		int y0 = (int)(g.gy + WIDE_TOP_BAR_H * g.scale) + gap;
+		for (int i = 0; i < ITEM_COUNT; i++)
+			items[i] = Rect{ hx, y0 + i * (b + gap), b, b };
+		return ITEM_COUNT;
+	}
 	if (g.side)
 	{
 		int margin = (int)g.gx;
@@ -324,6 +388,17 @@ void sk_touch_init(void)
 void sk_touch_update(void)
 {
 	sk_cheats_update(g_window);
+	if (config.win_width != BASE_W || config.win_height != BASE_H)
+	{
+		// Wide mode: the toolbar and the cheats panel only exist in game; drop them when a menu shows.
+		SkCheatsGameState st;
+		sk_cheats_get_game_state(&st);
+		if (!st.in_game)
+		{
+			g_strip_open = false;
+			sk_cheats_close();
+		}
+	}
 	SDL_ShowCursor(SDL_DISABLE);   // the game re-enables the system cursor on focus loss; touch has none
 	Uint32 now = SDL_GetTicks();
 	if (g_release_pending && (Sint32)(now - g_release_at) >= 0)
@@ -760,8 +835,8 @@ void sk_touch_draw(SDL_Renderer *r)
 		logged = true;
 		int ww = 0, wh = 0;
 		SDL_GetWindowSize(g_window, &ww, &wh);
-		SDL_Log("touch: window=%dx%d output=%dx%d letterbox rect=(%.1f,%.1f %.1fx%.1f) scale=%.4f",
-			ww, wh, g.out_w, g.out_h, g.gx, g.gy, g.gw, g.gh, g.scale);
+		SDL_Log("touch: window=%dx%d output=%dx%d logical=%dx%d%s zoom_width=%d letterbox rect=(%.1f,%.1f %.1fx%.1f) scale=%.4f",
+			ww, wh, g.out_w, g.out_h, g.lw, g.lh, g.wide ? " (wide)" : "", g.zoom_w, g.gx, g.gy, g.gw, g.gh, g.scale);
 	}
 
 	// Draw in output pixels so the toolbar can use the letterbox margins: suspend the logical size,

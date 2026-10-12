@@ -33,6 +33,8 @@ struct SkCheatsView
 	int   out_w, out_h;   // renderer output size
 	float game_x, game_w; // letterboxed game rect (horizontal extent)
 	int   strip_h;        // height of the collapsible strip row (overlay mode keeps clear of it)
+	int   wide;           // wide logical size: panel is the rect below (output px), not margin/overlay
+	float wide_x, wide_y, wide_w, wide_h;
 };
 
 // Open / close the panel. Toggle is what the "C" toolbar button calls.
