@@ -1,0 +1,34 @@
+--- a/src/OVGA.cpp
++++ b/src/OVGA.cpp
+@@ -125,6 +125,11 @@
+       ERR("Unknown pixel format: %s\n", SDL_GetError());
+       return 0;
+    }
++#ifdef __ANDROID__
++   // The window format varies by device (RGB565, RGBA8888, ...). The game fills a surface created
++   // with default masks, which for 32 bpp is XRGB8888, so use that texture format everywhere.
++   window_pixel_format = SDL_PIXELFORMAT_RGB888;
++#endif
+ 
+    // Cannot use SDL_PIXELFORMAT_INDEX8:
+    //   Palettized textures are not supported
+@@ -551,8 +556,19 @@
+          mouse.add_typing_event(event.text.text, misc.get_time());
+          break;
+       case SDL_RENDER_TARGETS_RESET:
++         sys.need_redraw_flag = 1;
++         break;
++#ifdef __ANDROID__
++      case SDL_RENDER_DEVICE_RESET:
++         // GLES context lost (app was backgrounded): all textures are gone, recreate ours
++         if (texture)
++            SDL_DestroyTexture(texture);
++         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB888,
++                                     SDL_TEXTUREACCESS_STREAMING,
++                                     VGA_WIDTH, VGA_HEIGHT);
+          sys.need_redraw_flag = 1;
+          break;
++#endif
+       case SDL_TEXTEDITING:
+       case SDL_JOYAXISMOTION:
+       case SDL_JOYBALLMOTION:

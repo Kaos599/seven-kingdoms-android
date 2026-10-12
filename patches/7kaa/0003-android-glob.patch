@@ -1,0 +1,14 @@
+--- a/src/ODIR.cpp
++++ b/src/ODIR.cpp
+@@ -33,7 +33,11 @@
+ #include <dirent.h>
+ #include <ctype.h>
+ #include <sys/stat.h>
++#ifdef __ANDROID__
++#include <sk_glob.h>	// bionic only declares glob() from API 28
++#else
+ #include <glob.h>
++#endif
+ #include <time.h>
+ #endif
+ 
