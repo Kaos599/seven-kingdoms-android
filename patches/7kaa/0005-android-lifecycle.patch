@@ -1,0 +1,27 @@
+--- a/src/OVGA.cpp
++++ b/src/OVGA.cpp
+@@ -32,6 +32,7 @@
+ #include <ConfigAdv.h>
+ #ifdef __ANDROID__
+ #include <sk_touch.h>
++#include <sk_lifecycle.h>
+ #endif
+ 
+ DBGLOG_DEFAULT_CHANNEL(Vga);
+@@ -90,6 +91,7 @@
+ 
+ #ifdef __ANDROID__
+    sk_touch_init();	// SDL hints must be set before SDL_Init
++   sk_lifecycle_init();
+ #endif
+    if (SDL_Init(SDL_INIT_VIDEO))
+       return 0;
+@@ -376,6 +378,8 @@
+    {
+ #ifdef __ANDROID__
+       if( sk_touch_handle_event(&event, window, renderer) )
++         continue;
++      if( sk_lifecycle_handle_event(&event) )	// SDL_APP_*: pause game + audio in background
+          continue;
+ #endif
+       switch (event.type)
