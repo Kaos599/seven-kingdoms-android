@@ -1,5 +1,5 @@
---- a/src/OSYS.cpp	2026-10-12 17:31:38
-+++ b/src/OSYS.cpp	2026-10-12 17:31:49
+--- a/src/OSYS.cpp	2026-10-12 20:05:10
++++ b/src/OSYS.cpp	2026-10-12 20:05:20
 @@ -90,6 +90,9 @@
  #include <CmdLine.h>
  #include <FilePath.h>
@@ -10,7 +10,7 @@
  
  #include <dbglog.h>
  #ifdef USE_WINDOWS
-@@ -3186,3 +3189,31 @@
+@@ -3197,3 +3200,92 @@
  	return config_adv.race_random_list[num];
  }
  //--------- End of static function random_race ---------//
@@ -41,4 +41,65 @@
 +   st->fast_build = config.fast_build;
 +}
 +//--------- End of function sk_cheats_get_game_state ---------//
++
++//-------- Begin of function sk_cheats_unit_cheat --------//
++//
++// Android cheats panel: COMBAT +20 / SKILL +20 / SPY SKILL +20 applied to EVERY selected unit of the
++// player's nation. Per-unit effect and limits are copied from Sys::detect_cheat_key ('[' ']' '\'' cases),
++// which only touches unit_array.selected_recno. Selection is found like UnitArray::return_camp does:
++// loop over unit_array, skip deleted, selected_flag set, alive, Unit::is_own() (true nation, spies included).
++// Re-checks the same gates as the key path (not multiplayer, human nation, cheat mode enabled).
++// which: 0 = combat level, 1 = skill level, 2 = spy skill. Returns the number of units changed.
++//
++int sk_cheats_unit_cheat(int which)
++{
++   SkCheatsGameState st;
++   sk_cheats_get_game_state(&st);
++   if( !st.can_cheat || !st.cheat_on )
++      return 0;
++
++   int changed = 0;
++
++   for( int i=unit_array.size() ; i>0 ; i-- )
++   {
++      if( unit_array.is_deleted(i) )
++         continue;
++
++      Unit* unitPtr = unit_array[i];
++
++      if( !unitPtr->selected_flag )
++         continue;
++      if( unitPtr->hit_points<=0 || unitPtr->cur_action==SPRITE_DIE || unitPtr->action_mode==ACTION_DIE )
++         continue;
++      if( !unitPtr->is_own() )
++         continue;
++
++      if( which == 0 )           // same as case '[' in Sys::detect_cheat_key
++      {
++         unitPtr->set_combat_level( MIN(100, unitPtr->skill.combat_level+20) );
++         changed++;
++      }
++      else if( which == 1 )      // same as case ']'
++      {
++         if( unitPtr->skill.skill_id )
++         {
++            unitPtr->skill.skill_level = MIN(100, unitPtr->skill.skill_level+20);
++            changed++;
++         }
++      }
++      else if( which == 2 )      // same as case '\''
++      {
++         if( unitPtr->spy_recno && !spy_array.is_deleted(unitPtr->spy_recno) )
++         {
++            Spy* spyPtr = spy_array[unitPtr->spy_recno];
++
++            spyPtr->spy_skill = MIN(100, spyPtr->spy_skill+20);
++            changed++;
++         }
++      }
++   }
++
++   return changed;
++}
++//--------- End of function sk_cheats_unit_cheat ---------//
 +#endif
