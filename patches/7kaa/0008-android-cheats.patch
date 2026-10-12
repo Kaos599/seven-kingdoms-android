@@ -1,0 +1,44 @@
+--- a/src/OSYS.cpp	2026-10-12 17:31:38
++++ b/src/OSYS.cpp	2026-10-12 17:31:49
+@@ -90,6 +90,9 @@
+ #include <CmdLine.h>
+ #include <FilePath.h>
+ #include <ConfigAdv.h>
++#ifdef __ANDROID__
++#include <sk_cheats.h>
++#endif
+ 
+ #include <dbglog.h>
+ #ifdef USE_WINDOWS
+@@ -3186,3 +3189,31 @@
+ 	return config_adv.race_random_list[num];
+ }
+ //--------- End of static function random_race ---------//
++
++
++#ifdef __ANDROID__
++//-------- Begin of function sk_cheats_get_game_state --------//
++//
++// Read-only snapshot for the Android cheats panel (port/android/sk_cheats.cpp).
++// can_cheat mirrors the conditions under which Sys::process_key accepts cheat keys.
++//
++void sk_cheats_get_game_state(SkCheatsGameState *st)
++{
++   st->in_game   = sys.sys_flag == SYS_RUN;
++   st->can_cheat = 0;
++   st->cheat_on  = 0;
++
++   if( st->in_game && nation_array.player_recno && !remote.is_enable() &&
++       !nation_array.is_deleted(nation_array.player_recno) &&
++       !option_menu.is_active() && !in_game_menu.is_active() )
++   {
++      st->can_cheat = 1;
++      st->cheat_on  = (~nation_array)->cheat_enabled_flag ||
++                      sys.debug_session || sys.testing_session || scenario_cheat_flag;
++   }
++
++   st->king_undie = config.king_undie_flag;
++   st->fast_build = config.fast_build;
++}
++//--------- End of function sk_cheats_get_game_state ---------//
++#endif
