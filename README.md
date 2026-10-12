@@ -63,6 +63,9 @@ and the buttons unlock:
 | PRAYER MAX | Fill the selected Seat of Power |
 | FIRM FULL HP | Selected building to full hit points |
 | COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the combat, skill or spying level of every selected unit of yours (up to 100) |
+| REPUTATION +10 / -10 | Your reputation up or down by 10 (limits -100 to 100) |
+| RACE POP +10 / -10 | 10 more or fewer people of the race selected in the town you have open (not the same as TOWN POP, which adds a random race) |
+| HEAL ALL | Every living unit you own to full hit points, and your buildings too (not those still under construction) |
 
 These are exactly the cheats built into the game (full reference: [docs/CHEATS.md](docs/CHEATS.md)). They
 work in single player only, and the game marks a cheated game "(Cheated)" on its final score. Switching
