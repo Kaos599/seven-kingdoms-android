@@ -43,6 +43,26 @@ buttons for keys that have no mouse equivalent: **Pause**, **Slower**, **Faster*
 king), **G** (jump to your general) and **D** (open the oldest diplomatic message). On a 4:3 tablet the
 toolbar is a strip that opens from a handle in the top-left corner.
 
+**Cheats.** Tap **C** on the toolbar to open the cheats panel in the left-hand bar. Switch **Cheats ON**
+(it types the game's own Shift + `111 222 333` code, then tap away the game's "Cheat Mode Enabled" message)
+and the buttons unlock:
+
+| Button | Effect |
+|---|---|
+| CASH +1000 / FOOD +1000 | +1000 money / +1000 food |
+| ALL TECH AND GODS | All technologies and Greater Beings |
+| REVEAL MAP | Reveal the whole map |
+| IMMORTAL KING | Toggle: your king cannot die |
+| FAST BUILD | Toggle: buildings finish almost instantly |
+| TOWN POP +10 | Ten more people in the selected town |
+| PRAYER MAX | Fill the selected Seat of Power |
+| FIRM FULL HP | Selected building to full hit points |
+| COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the selected unit's combat, skill or spying level |
+
+These are exactly the cheats built into the game (full reference: [docs/CHEATS.md](docs/CHEATS.md)). They
+work in single player only, and the game marks a cheated game "(Cheated)" on its final score. Switching
+the panel OFF locks the buttons; the game itself has no way to turn cheat mode off for that game.
+
 **Leaving the app.** Switching away (Home, a call, screen off) pauses the game and the music. When you come
 back the game is still paused: tap **Pause** to carry on. The game's own autosave runs every two in-game
 months; save manually before closing the app if you want to keep your exact position.
@@ -90,6 +110,7 @@ with a different key cannot update an installed copy.
 | `patches/7kaa/0004` | Touch input layer and toolbar (`port/android/sk_touch.cpp`) |
 | `patches/7kaa/0005` | Pause game and audio in the background (`port/android/sk_lifecycle.cpp`) |
 | `patches/7kaa/0006` | Hide the game's software cursor |
+| `patches/7kaa/0008` | Cheats panel game-state hook (`port/android/sk_cheats.cpp`) |
 | `port/CMakeLists.txt` | Builds SDL2, openal-soft (OpenSL ES backend), enet and the game as `libmain.so` |
 | `android/` | Gradle project, activity (fullscreen, keep screen on), Licences screen |
 
