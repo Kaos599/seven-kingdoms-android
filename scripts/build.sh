@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-# Build the APK:  scripts/build.sh [debug|release]
+# Build the APK:  scripts/build.sh [debug|release] [--side-by-side]
+#   --side-by-side  second app: application ID com.sevenkfans.sevenkingdoms.hd, label "Seven Kingdoms HD"
+#                   (Gradle -PsideBySide). Default: com.sevenkfans.sevenkingdoms, label "Seven Kingdoms".
 # Prerequisite (once): scripts/fetch-deps.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MODE="${1:-debug}"
+MODE="debug"
+GRADLE_PROPS=()
+for arg in "$@"; do
+  case "$arg" in
+    debug|release) MODE="$arg" ;;
+    --side-by-side) GRADLE_PROPS+=(-PsideBySide) ;;
+    *) echo "usage: $0 [debug|release] [--side-by-side]" >&2; exit 2 ;;
+  esac
+done
 
 case "$MODE" in
   debug) TASK=assembleDebug; APK="$ROOT/android/app/build/outputs/apk/debug/app-debug.apk" ;;
   release) TASK=assembleRelease; APK="$ROOT/android/app/build/outputs/apk/release/app-release.apk" ;;
-  *) echo "usage: $0 [debug|release]" >&2; exit 2 ;;
+  *) echo "usage: $0 [debug|release] [--side-by-side]" >&2; exit 2 ;;
 esac
 
 # Release keystore (CONTRACT 3.7): lives outside the repo, referenced by absolute path.
@@ -63,7 +73,7 @@ fi
 "$ROOT/scripts/stage-assets.sh"
 
 cd "$ROOT/android"
-./gradlew "$TASK"
+./gradlew "$TASK" ${GRADLE_PROPS[@]+"${GRADLE_PROPS[@]}"}
 
 echo
 echo "APK: $APK"

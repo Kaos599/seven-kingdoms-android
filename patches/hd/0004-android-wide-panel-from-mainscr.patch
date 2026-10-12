@@ -1,0 +1,155 @@
+--- a/src/OINFO.cpp
++++ b/src/OINFO.cpp
+@@ -22,6 +22,7 @@
+ //Description : Info class
+ 
+ #include <time.h>
++#include <string.h>
+ #include <OVGA.h>
+ #include <OIMGRES.h>
+ #include <OSPY.h>
+@@ -258,8 +259,121 @@
+ 	}
+ }
+ //---------- End of function Info::next_day --------//
++
++
++#ifdef __ANDROID__
++//-------- Begin of Android wide panel background --------//
++//
++// Wide (> 800x600) in-game background, composed once from the original 800x600 MAINSCR in
++// I_IF.RES, replacing HD's crops of the 3840x2160 art. Layout (source coordinates, 800x600):
++//   cols 0..575            tablet buttons + top bar (kept as is, rows 0..55)
++//   cols 576..799          right block: map-mode buttons, minimap frame, info panel (224 px)
++// The right block is placed at x = zoom_width (= W-224). The top bar gap in between is filled by
++// mirror-tiling the stone slice WIDE_SLICE_X0..575 (no text, no buttons). The first tile is the
++// flipped slice so it continues the stone at column 575 without a seam; rows are copied whole so
++// the bezel lines stay continuous. Rows 56.. left of the right block are stone (the world view
++// paints over them); the last 10 rows use the original bottom frame rows 590..599.
++//
++#define WIDE_SRC_W        800
++#define WIDE_SRC_H        600
++#define WIDE_TOP_H        56
++#define WIDE_LEFT_W       576		// columns of the original left part
++#define WIDE_SLICE_X0     424		// stone-only slice WIDE_SLICE_X0..WIDE_LEFT_W-1 (152 px)
++#define WIDE_STONE_X0     590		// stone-only slice of the right block, rows WIDE_STONE_Y0..+99
++#define WIDE_STONE_W      200
++#define WIDE_STONE_Y0     300
++#define WIDE_STONE_H      100
++#define WIDE_BOTTOM_H     10
++
++static char* wide_img = NULL;
++static int   wide_img_w = 0, wide_img_h = 0, wide_img_rx = -1;
++
++// index in a mirror-tiled run of length per: 0..per-1, per-1..0, 0..per-1, ...
++static int wide_mirror(int k, int per)
++{
++	int t = k / per, r = k % per;
++	return (t & 1) ? per-1-r : r;
++}
+ 
++static void wide_compose(int W, int H, int rx)
++{
++	short origW = 0, origH = 0;
++	int dataSize;
++	File* resFile = image_interface.get_file("MAINSCR", dataSize);
++	if( !resFile )
++		return;
++	resFile->file_read(&origW, 2);
++	resFile->file_read(&origH, 2);
++	if( origW != WIDE_SRC_W || origH != WIDE_SRC_H || H < WIDE_SRC_H )
++		return;
+ 
++	unsigned char* src = new unsigned char[WIDE_SRC_W * WIDE_SRC_H];
++	resFile->file_read(src, WIDE_SRC_W * WIDE_SRC_H);
++
++	delete[] wide_img;
++	wide_img = new char[W * H];
++	wide_img_w = W;
++	wide_img_h = H;
++	wide_img_rx = rx;
++
++	for( int y = 0; y < H; ++y )
++	{
++		unsigned char* dst = (unsigned char*) wide_img + y*W;
++
++		//----- source row of the right block (stretch the stone just above the bottom frame) -----//
++		int ry;
++		if( y < WIDE_SRC_H-WIDE_BOTTOM_H )
++			ry = y;
++		else if( y < H-WIDE_BOTTOM_H )
++			ry = WIDE_SRC_H-2*WIDE_BOTTOM_H + (y-(WIDE_SRC_H-WIDE_BOTTOM_H)) % WIDE_BOTTOM_H;
++		else
++			ry = WIDE_SRC_H-WIDE_BOTTOM_H + (y-(H-WIDE_BOTTOM_H));
++
++		for( int x = 0; x < W; ++x )
++		{
++			unsigned char v;
++			if( x >= rx && x < rx+224 )				// right block
++				v = src[ry*WIDE_SRC_W + WIDE_LEFT_W + (x-rx)];
++			else if( y < WIDE_TOP_H )				// top bar
++			{
++				if( x < WIDE_LEFT_W )
++					v = src[y*WIDE_SRC_W + x];
++				else
++				{
++					int sliceW = WIDE_LEFT_W - WIDE_SLICE_X0;
++					int k = x - WIDE_LEFT_W, t = k / sliceW, r = k % sliceW;
++					v = src[y*WIDE_SRC_W + ((t & 1) ? WIDE_SLICE_X0 + r : WIDE_LEFT_W-1 - r)];
++				}
++			}
++			else if( y >= H-WIDE_BOTTOM_H )			// bottom frame under the map view
++				v = src[(WIDE_SRC_H-WIDE_BOTTOM_H + (y-(H-WIDE_BOTTOM_H)))*WIDE_SRC_W + WIDE_STONE_X0 + wide_mirror(x, WIDE_STONE_W)];
++			else									// stone behind the map view
++				v = src[(WIDE_STONE_Y0 + wide_mirror(y-WIDE_TOP_H, WIDE_STONE_H))*WIDE_SRC_W + WIDE_STONE_X0 + wide_mirror(x, WIDE_STONE_W)];
++			dst[x] = v;
++		}
++	}
++
++	delete[] src;
++}
++
++// Copy the cached wide background to vga_back (composed on first use and when the resolution changes).
++static void wide_disp_background()
++{
++	int W = config.win_width, H = config.win_height, rx = config.zoom_width;
++	if( !wide_img || wide_img_w != W || wide_img_h != H || wide_img_rx != rx )
++		wide_compose(W, H, rx);
++	if( !wide_img )
++		return;
++
++	int pitch = vga_back.buf_pitch();
++	int copyW = MIN(W, vga_back.buf_width());
++	int copyH = MIN(H, vga_back.buf_height());
++	for( int y = 0; y < copyH; ++y )
++		memcpy(vga_back.buf_ptr() + y*pitch, wide_img + y*W, copyW);
++}
++//-------- End of Android wide panel background --------//
++#endif
++
+ //-------- Begin of function Info::disp_panel --------//
+ //
+ void Info::disp_panel()
+@@ -269,8 +383,14 @@
+ 	{
+ 		image_interface.put_large(&vga_back, 0, 0, "MAINSCR", 1);
+ 	}
++#ifdef __ANDROID__
+ 	else
+ 	{
++		wide_disp_background();	// cached wide image composed from the 800x600 MAINSCR
++	}
++#else
++	else
++	{
+ 		// for higher resolutions, crop regions from I_IF_3840_2160.RES
+ 		int W = config.win_width;
+ 		int H = config.win_height;
+@@ -292,6 +412,7 @@
+ 		// 4. draw bottom-right corner
+ 		image_interface.put_cropped_area(&vga_back, rightBarX, H - bottomBorderH, rightBarW, bottomBorderH, "MAINSCR", 3616, 2150, 224, bottomBorderH);
+ 	}
++#endif
+ 
+ 	//------ keep a copy of bitmap of the panel texture -----//
+ 

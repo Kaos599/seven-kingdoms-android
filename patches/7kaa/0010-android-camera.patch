@@ -1,0 +1,74 @@
+--- a/src/OVGA.cpp
++++ b/src/OVGA.cpp
+@@ -34,6 +34,7 @@
+ #ifdef __ANDROID__
+ #include <sk_touch.h>
+ #include <sk_lifecycle.h>
++#include <sk_camera.h>
+ #endif
+ 
+ DBGLOG_DEFAULT_CHANNEL(Vga);
+@@ -858,6 +859,8 @@
+             dst.x = (ow - dst.w) / 2;
+             dst.y = (oh - dst.h) / 2;
+             SDL_RenderCopy(renderer, texture, NULL, &dst);
++            // map camera: scaled window over the map rectangle when zoomed/panned; no-op otherwise
++            sk_camera_present(renderer, texture, &dst, VGA_WIDTH, VGA_HEIGHT);
+          }
+          else
+             SDL_RenderCopy(renderer, texture, NULL, NULL);
+--- a/src/OWORLD_M.cpp
++++ b/src/OWORLD_M.cpp
+@@ -34,6 +34,9 @@
+ #include <OGAME.h>
+ #include <OWORLD.h>
+ #include <OTERRAIN.h>
++#ifdef __ANDROID__
++#include <sk_camera.h>
++#endif
+ 
+ //-------- Begin of function MapMatrix::MapMatrix ----------//
+ 
+@@ -328,6 +331,19 @@
+ 	int y1=image_y1+(cur_y_loc-top_y_loc)*loc_height;
+ 	int x2=x1+cur_cargo_width *loc_width-1;
+ 	int y2=y1+cur_cargo_height*loc_height-1;
++
++#ifdef __ANDROID__
++	{	// show the camera window (zoomed/panned view) instead of the whole engine view
++		float wx, wy, ww, wh;
++		if( sk_camera_minimap_window(&wx, &wy, &ww, &wh) )
++		{
++			x1 = image_x1 + (int)((wx-top_x_loc)*loc_width + 0.5f);
++			y1 = image_y1 + (int)((wy-top_y_loc)*loc_height + 0.5f);
++			x2 = x1 + (int)(ww*loc_width + 0.5f) - 1;
++			y2 = y1 + (int)(wh*loc_height + 0.5f) - 1;
++		}
++	}
++#endif
+ 
+ 	vga_back.rect( x1, y1, x2, y2, 1, VGA_YELLOW + squareFrameCount );
+ 
+--- a/src/OWORLD_Z.cpp
++++ b/src/OWORLD_Z.cpp
+@@ -64,6 +64,9 @@
+ #include <OIMGRES.h>
+ #include "gettext.h"
+ #include <algorithm>
++#ifdef __ANDROID__
++#include <sk_camera.h>
++#endif
+ 
+ //--------- Define static vars -----------//
+ #define Lightning_bound_x1 (ZOOM_X1 + 4)
+@@ -333,6 +336,10 @@
+ 	int maxXLoc = std::min(top_x_loc + disp_x_loc, max_x_loc);
+ 	int maxYLoc = std::min(top_y_loc + disp_y_loc, max_y_loc);
+ 
++#ifdef __ANDROID__
++	sk_camera_note_draw(top_x_loc, top_y_loc);	// origin this frame is drawn with (camera window offset)
++#endif
++
+ 	dispPower = (world.map_matrix->map_mode == MAP_MODE_POWER &&
+ 					 world.map_matrix->power_mode ) ||
+ 					power.command_id == COMMAND_BUILD_FIRM ||

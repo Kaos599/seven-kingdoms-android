@@ -79,7 +79,9 @@ set(PORT_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_android_video.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_glob.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_touch.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_camera.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_cheats.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_text.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_lifecycle.cpp"
 )
 
@@ -124,5 +126,7 @@ target_link_libraries(main PRIVATE SDL2 OpenAL log android)
 add_dependencies(main enet)  # build the (currently unlinked) static enet too
 
 # Upstream sources are 1997-era code and very noisy: silence them. Warnings stay on for port/.
-set_source_files_properties(${_game_sources} PROPERTIES COMPILE_OPTIONS "-w")
+# -Wno-c++11-narrowing: HD (patches/hd) uses runtime values in braced initialisers that narrow to short
+# (e.g. {6+SWORD1_X,...}); clang makes that an error by default. Game sources only, never port/.
+set_source_files_properties(${_game_sources} PROPERTIES COMPILE_OPTIONS "-w;-Wno-c++11-narrowing")
 set_source_files_properties(${PORT_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra")

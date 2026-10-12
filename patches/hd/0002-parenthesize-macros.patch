@@ -1,0 +1,574 @@
+diff --git a/include/OINFO.h b/include/OINFO.h
+index 820912e..1108566 100644
+--- a/include/OINFO.h
++++ b/include/OINFO.h
+@@ -41,9 +41,9 @@ enum { INFO_REPAINT=10, INFO_UPDATE, INFO_SPECIAL };
+ #define TOP_MENU_X2   (VGA_WIDTH-4)
+ #define TOP_MENU_Y2	 30
+ 
+-#define INFO_X1 	ZOOM_WIDTH+10
++#define INFO_X1 	(ZOOM_WIDTH+10)
+ #define INFO_Y1   265
+-#define INFO_X2   ZOOM_WIDTH+10+204
++#define INFO_X2   (ZOOM_WIDTH+10+204)
+ #define INFO_Y2	  589
+ 
+ #define MSG_X1		INFO_X1
+diff --git a/src/OFIRMIF2.cpp b/src/OFIRMIF2.cpp
+index 8a770fc..ec0c99c 100644
+--- a/src/OFIRMIF2.cpp
++++ b/src/OFIRMIF2.cpp
+@@ -46,14 +46,14 @@
+ //------------- Define coordinations -----------//
+ 
+ #define SPY_BROWSE_X1 INFO_X1
+-#define SPY_BROWSE_Y1 INFO_Y1 + 75
++#define SPY_BROWSE_Y1 (INFO_Y1 + 75)
+ #define SPY_BROWSE_X2 INFO_X2
+-#define SPY_BROWSE_Y2 SPY_BROWSE_Y1 + 130
++#define SPY_BROWSE_Y2 (SPY_BROWSE_Y1 + 130)
+ 
+ #define BUTTON_X1 INFO_X1
+-#define BUTTON_Y1 SPY_BROWSE_Y2 + 28
++#define BUTTON_Y1 (SPY_BROWSE_Y2 + 28)
+ #define BUTTON_X2 INFO_X2
+-#define BUTTON_Y2 BUTTON_Y1 + 50
++#define BUTTON_Y2 (BUTTON_Y1 + 50)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OF_HARB.cpp b/src/OF_HARB.cpp
+index 38eb7fd..57e470d 100644
+--- a/src/OF_HARB.cpp
++++ b/src/OF_HARB.cpp
+@@ -52,14 +52,14 @@
+ //------------- Define coordinations -----------//
+ 
+ #define SHIP_BROWSE_X1 INFO_X1
+-#define SHIP_BROWSE_Y1 INFO_Y1 + 54
++#define SHIP_BROWSE_Y1 (INFO_Y1 + 54)
+ #define SHIP_BROWSE_X2 INFO_X2
+-#define SHIP_BROWSE_Y2 SHIP_BROWSE_Y1 + 100
++#define SHIP_BROWSE_Y2 (SHIP_BROWSE_Y1 + 100)
+ 
+ #define SHIP_DET_X1 INFO_X1
+-#define SHIP_DET_Y1 SHIP_BROWSE_Y2 + 5
++#define SHIP_DET_Y1 (SHIP_BROWSE_Y2 + 5)
+ #define SHIP_DET_X2 INFO_X2
+-#define SHIP_DET_Y2 SHIP_DET_Y1 + 92
++#define SHIP_DET_Y2 (SHIP_DET_Y1 + 92)
+ 
+ //---------- Define constant ------------//
+ 
+diff --git a/src/OF_INN.cpp b/src/OF_INN.cpp
+index 35f2258..a728815 100644
+--- a/src/OF_INN.cpp
++++ b/src/OF_INN.cpp
+@@ -47,14 +47,14 @@
+ //------------- Define coordinations -----------//
+ 
+ #define HIRE_BROWSE_X1 INFO_X1
+-#define HIRE_BROWSE_Y1 INFO_Y1 + 52
++#define HIRE_BROWSE_Y1 (INFO_Y1 + 52)
+ #define HIRE_BROWSE_X2 INFO_X2
+-#define HIRE_BROWSE_Y2 HIRE_BROWSE_Y1 + 144
++#define HIRE_BROWSE_Y2 (HIRE_BROWSE_Y1 + 144)
+ 
+ #define HIRE_DET_X1 INFO_X1
+-#define HIRE_DET_Y1 HIRE_BROWSE_Y2 + 5
++#define HIRE_DET_Y1 (HIRE_BROWSE_Y2 + 5)
+ #define HIRE_DET_X2 INFO_X2
+-#define HIRE_DET_Y2 HIRE_DET_Y1 + 54
++#define HIRE_DET_Y2 (HIRE_DET_Y1 + 54)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OGAMEMP.cpp b/src/OGAMEMP.cpp
+index abb6d15..0a5f0b0 100644
+--- a/src/OGAMEMP.cpp
++++ b/src/OGAMEMP.cpp
+@@ -2559,11 +2559,11 @@ int Game::mp_select_option(NewNationPara *nationPara, int *mpPlayerCount)
+ 	MpStructSeedStr msgSeedStr(info.random_seed);
+ 	GetA mapIdField;
+ #if(defined(SPANISH))
+-	#define MAPID_X1 MUPG_X1+588
++	#define MAPID_X1 (MUPG_X1+588)
+ #elif(defined(FRENCH))
+-	#define MAPID_X1 MUPG_X1+578
++	#define MAPID_X1 (MUPG_X1+578)
+ #else
+-	#define MAPID_X1 MUPG_X1+564
++	#define MAPID_X1 (MUPG_X1+564)
+ #endif
+ 
+ 	mapIdField.init( MAPID_X1, MUPG_Y1 + offsetY+83, MUPG_X1 + 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
+@@ -4483,11 +4483,11 @@ int Game::mp_select_load_option(char *fileName)
+ 	MpStructSeedStr msgSeedStr(info.random_seed);
+ 	GetA mapIdField;
+ #if(defined(SPANISH))
+-	#define MAPID_X1 MUPG_X1+588
++	#define MAPID_X1 (MUPG_X1+588)
+ #elif(defined(FRENCH))
+-	#define MAPID_X1 MUPG_X1+578
++	#define MAPID_X1 (MUPG_X1+578)
+ #else
+-	#define MAPID_X1 MUPG_X1+564
++	#define MAPID_X1 (MUPG_X1+564)
+ #endif
+ 	mapIdField.init( MAPID_X1, MUPG_Y1 + offsetY+83, MUPG_X1 + 700, msgSeedStr.seed_str, msgSeedStr.RANDOM_SEED_MAX_LEN, &font_san, 0, 1);
+ #undef MAPID_X1
+diff --git a/src/OGAMENCY.cpp b/src/OGAMENCY.cpp
+index cdd329a..b748f84 100644
+--- a/src/OGAMENCY.cpp
++++ b/src/OGAMENCY.cpp
+@@ -46,12 +46,12 @@ enum {
+ 	SUBCLASS_TOP_BORDER = 3, BUTTON_Y_SPACING = 31, MAX_SUBBUTTON = 10
+ };
+ 
+-#define BUTTON_X			NCY_X1+14
+-#define BUTTON_Y			NCY_Y1+14
+-#define SUBBUTTON_X			NCY_X1+14
+-#define SUBBUTTON_Y			NCY_Y1+236
+-#define CLASS_BUTTON_Y		NCY_Y1+14
+-#define SUBCLASS_BUTTON_Y	NCY_Y1+236
++#define BUTTON_X			(NCY_X1+14)
++#define BUTTON_Y			(NCY_Y1+14)
++#define SUBBUTTON_X			(NCY_X1+14)
++#define SUBBUTTON_Y			(NCY_Y1+236)
++#define CLASS_BUTTON_Y		(NCY_Y1+14)
++#define SUBCLASS_BUTTON_Y	(NCY_Y1+236)
+ 
+ enum
+ {
+diff --git a/src/OINGMENU.cpp b/src/OINGMENU.cpp
+index 02ba78c..bd8df94 100644
+--- a/src/OINGMENU.cpp
++++ b/src/OINGMENU.cpp
+@@ -46,19 +46,19 @@
+ enum { GAME_MENU_WIDTH  = 350,
+        GAME_MENU_HEIGHT = 400  };
+ 
+-#define GAME_MENU_X1 ZOOM_X1 + ((ZOOM_X2 - ZOOM_X1 + 1) - GAME_MENU_WIDTH) / 2
+-#define GAME_MENU_Y1 ZOOM_Y1 + ((ZOOM_Y2 - ZOOM_Y1 + 1) - GAME_MENU_HEIGHT) / 2
++#define GAME_MENU_X1 (ZOOM_X1 + ((ZOOM_X2 - ZOOM_X1 + 1) - GAME_MENU_WIDTH) / 2)
++#define GAME_MENU_Y1 (ZOOM_Y1 + ((ZOOM_Y2 - ZOOM_Y1 + 1) - GAME_MENU_HEIGHT) / 2)
+ 
+ enum { GAME_OPTION_WIDTH  = 170,
+        GAME_OPTION_HEIGHT = 34   };
+ 
+-#define GAME_OPTION_X1 GAME_MENU_X1 + 90
+-#define GAME_OPTION_Y1 GAME_MENU_Y1 + 93
++#define GAME_OPTION_X1 (GAME_MENU_X1 + 90)
++#define GAME_OPTION_Y1 (GAME_MENU_Y1 + 93)
+ 
+-#define MAP_ID_X1 GAME_MENU_X1 + 18
+-#define MAP_ID_Y1 GAME_MENU_Y1 + 362
+-#define MAP_ID_X2 GAME_MENU_X1 + 330
+-#define MAP_ID_Y2 GAME_MENU_Y1 + 382
++#define MAP_ID_X1 (GAME_MENU_X1 + 18)
++#define MAP_ID_Y1 (GAME_MENU_Y1 + 362)
++#define MAP_ID_X2 (GAME_MENU_X1 + 330)
++#define MAP_ID_Y2 (GAME_MENU_Y1 + 382)
+ 
+ unsigned InGameMenu::menu_hot_key[GAME_OPTION_COUNT] = {'o','s','l', 0,0,0,0,KEY_ESC };
+ 
+diff --git a/src/ONEWS.cpp b/src/ONEWS.cpp
+index db0fbb8..353a0c9 100644
+--- a/src/ONEWS.cpp
++++ b/src/ONEWS.cpp
+@@ -38,9 +38,9 @@
+ //------- define screen coordinations -------//
+ 
+ #define NEWS_HEIGHT 20
+-#define NEWS_X1 ZOOM_X1 + 8
+-#define NEWS_X2 ZOOM_X2 - 16
+-#define NEWS_Y2 ZOOM_Y2 - 5
++#define NEWS_X1 (ZOOM_X1 + 8)
++#define NEWS_X2 (ZOOM_X2 - 16)
++#define NEWS_Y2 (ZOOM_Y2 - 5)
+ 
+ //--------- define static vars --------------//
+ 
+diff --git a/src/OR_AI.cpp b/src/OR_AI.cpp
+index 5b4a997..24c3d2f 100644
+--- a/src/OR_AI.cpp
++++ b/src/OR_AI.cpp
+@@ -33,20 +33,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define ACTION_BROWSE_X1 ZOOM_X1 + 6
+-#define ACTION_BROWSE_Y1 ZOOM_Y1 + 6
+-#define ACTION_BROWSE_X2 ZOOM_X2 - 6
+-#define ACTION_BROWSE_Y2 ACTION_BROWSE_Y1 + 200
++#define ACTION_BROWSE_X1 (ZOOM_X1 + 6)
++#define ACTION_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define ACTION_BROWSE_X2 (ZOOM_X2 - 6)
++#define ACTION_BROWSE_Y2 (ACTION_BROWSE_Y1 + 200)
+ 
+-#define ATTACK_BROWSE_X1 ZOOM_X1 + 6
+-#define ATTACK_BROWSE_Y1 ACTION_BROWSE_Y2 + 6
+-#define ATTACK_BROWSE_X2 ZOOM_X2 - 6
+-#define ATTACK_BROWSE_Y2 ATTACK_BROWSE_Y1 + 160
++#define ATTACK_BROWSE_X1 (ZOOM_X1 + 6)
++#define ATTACK_BROWSE_Y1 (ACTION_BROWSE_Y2 + 6)
++#define ATTACK_BROWSE_X2 (ZOOM_X2 - 6)
++#define ATTACK_BROWSE_Y2 (ATTACK_BROWSE_Y1 + 160)
+ 
+-#define OTHER_INFO_X1 ZOOM_X1 + 6
+-#define OTHER_INFO_Y1 ATTACK_BROWSE_Y2 + 6
+-#define OTHER_INFO_X2 ZOOM_X2 - 6
+-#define OTHER_INFO_Y2 ZOOM_Y2 - 6
++#define OTHER_INFO_X1 (ZOOM_X1 + 6)
++#define OTHER_INFO_Y1 (ATTACK_BROWSE_Y2 + 6)
++#define OTHER_INFO_X2 (ZOOM_X2 - 6)
++#define OTHER_INFO_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define action mode string --------//
+ 
+diff --git a/src/OR_ECO.cpp b/src/OR_ECO.cpp
+index cc074bf..0912ba9 100644
+--- a/src/OR_ECO.cpp
++++ b/src/OR_ECO.cpp
+@@ -37,15 +37,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define INCOME_BROWSE_X1 ZOOM_X1 + 6
+-#define INCOME_BROWSE_Y1 ZOOM_Y1 + 6
+-#define INCOME_BROWSE_X2 ZOOM_X2 - 6
+-#define INCOME_BROWSE_Y2 INCOME_BROWSE_Y1 + 186
++#define INCOME_BROWSE_X1 (ZOOM_X1 + 6)
++#define INCOME_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define INCOME_BROWSE_X2 (ZOOM_X2 - 6)
++#define INCOME_BROWSE_Y2 (INCOME_BROWSE_Y1 + 186)
+ 
+-#define EXPENSE_BROWSE_X1 ZOOM_X1 + 6
+-#define EXPENSE_BROWSE_Y1 INCOME_BROWSE_Y2 + 6
+-#define EXPENSE_BROWSE_X2 ZOOM_X2 - 6
+-#define EXPENSE_BROWSE_Y2 ZOOM_Y2 - 30
++#define EXPENSE_BROWSE_X1 (ZOOM_X1 + 6)
++#define EXPENSE_BROWSE_Y1 (INCOME_BROWSE_Y2 + 6)
++#define EXPENSE_BROWSE_X2 (ZOOM_X2 - 6)
++#define EXPENSE_BROWSE_Y2 (ZOOM_Y2 - 30)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_MIL.cpp b/src/OR_MIL.cpp
+index a80fe55..428e0f7 100644
+--- a/src/OR_MIL.cpp
++++ b/src/OR_MIL.cpp
+@@ -37,15 +37,15 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define TROOP_BROWSE_X1 ZOOM_X1 + 6
+-#define TROOP_BROWSE_Y1 ZOOM_Y1 + 6
+-#define TROOP_BROWSE_X2 ZOOM_X2 - 6
+-#define TROOP_BROWSE_Y2 TROOP_BROWSE_Y1 + 240
++#define TROOP_BROWSE_X1 (ZOOM_X1 + 6)
++#define TROOP_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define TROOP_BROWSE_X2 (ZOOM_X2 - 6)
++#define TROOP_BROWSE_Y2 (TROOP_BROWSE_Y1 + 240)
+ 
+-#define UNIT_BROWSE_X1 ZOOM_X1 + 6
+-#define UNIT_BROWSE_Y1 TROOP_BROWSE_Y2 + 6
+-#define UNIT_BROWSE_X2 ZOOM_X2 - 6
+-#define UNIT_BROWSE_Y2 ZOOM_Y2 - 6
++#define UNIT_BROWSE_X1 (ZOOM_X1 + 6)
++#define UNIT_BROWSE_Y1 (TROOP_BROWSE_Y2 + 6)
++#define UNIT_BROWSE_X2 (ZOOM_X2 - 6)
++#define UNIT_BROWSE_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_NAT.cpp b/src/OR_NAT.cpp
+index 18ff15e..21802cd 100644
+--- a/src/OR_NAT.cpp
++++ b/src/OR_NAT.cpp
+@@ -44,22 +44,22 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define REPORT_BROWSE_X1 ZOOM_X1 + 6
+-#define REPORT_BROWSE_Y1 ZOOM_Y1 + 6
+-#define REPORT_BROWSE_X2 ZOOM_X2 - 6
+-#define REPORT_BROWSE_Y2 REPORT_BROWSE_Y1 + 206
++#define REPORT_BROWSE_X1 (ZOOM_X1 + 6)
++#define REPORT_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define REPORT_BROWSE_X2 (ZOOM_X2 - 6)
++#define REPORT_BROWSE_Y2 (REPORT_BROWSE_Y1 + 206)
+ 
+-#define REPORT_BUTTON_X1 ZOOM_X1 + 8
+-#define REPORT_BUTTON_Y1 REPORT_BROWSE_Y2 + 6
++#define REPORT_BUTTON_X1 (ZOOM_X1 + 8)
++#define REPORT_BUTTON_Y1 (REPORT_BROWSE_Y2 + 6)
+ #define REPORT_BUTTON_WIDTH 135
+-#define REPORT_BUTTON_Y2 REPORT_BUTTON_Y1 + 20
++#define REPORT_BUTTON_Y2 (REPORT_BUTTON_Y1 + 20)
+ #define REPORT_BUTTON_X_SPACE 130
+ 
+-#define REPORT_DET_X1 ZOOM_X1 + 6
+-#define REPORT_DET_Y1 REPORT_BUTTON_Y2 + 4
+-#define REPORT_DET_X2 ZOOM_X2 - 6
+-#define REPORT_DET_Y2 ZOOM_Y2 - 6
+-#define REPORT_TALK_Y2 ZOOM_Y2 - 86	
++#define REPORT_DET_X1 (ZOOM_X1 + 6)
++#define REPORT_DET_Y1 (REPORT_BUTTON_Y2 + 4)
++#define REPORT_DET_X2 (ZOOM_X2 - 6)
++#define REPORT_DET_Y2 (ZOOM_Y2 - 6)
++#define REPORT_TALK_Y2 (ZOOM_Y2 - 86)	
+ 
+ //---------- Define report mode strings ---------//
+ 
+diff --git a/src/OR_NEWS.cpp b/src/OR_NEWS.cpp
+index 8fa6c19..2cd7f47 100644
+--- a/src/OR_NEWS.cpp
++++ b/src/OR_NEWS.cpp
+@@ -35,10 +35,10 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define NEWS_BROWSE_X1 ZOOM_X1 + 6
+-#define NEWS_BROWSE_Y1 ZOOM_Y1 + 6
+-#define NEWS_BROWSE_X2 ZOOM_X2 - 6
+-#define NEWS_BROWSE_Y2 ZOOM_Y2 - 25
++#define NEWS_BROWSE_X1 (ZOOM_X1 + 6)
++#define NEWS_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define NEWS_BROWSE_X2 (ZOOM_X2 - 6)
++#define NEWS_BROWSE_Y2 (ZOOM_Y2 - 25)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_RANK.cpp b/src/OR_RANK.cpp
+index fc6db71..d573ace 100644
+--- a/src/OR_RANK.cpp
++++ b/src/OR_RANK.cpp
+@@ -33,23 +33,23 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define NATION_BROWSE_X1 ZOOM_X1 + 6
+-#define NATION_BROWSE_Y1 ZOOM_Y1 + 6
+-#define NATION_BROWSE_X2 ZOOM_X2 - 6
+-#define NATION_BROWSE_Y2 NATION_BROWSE_Y1 + 220
++#define NATION_BROWSE_X1 (ZOOM_X1 + 6)
++#define NATION_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define NATION_BROWSE_X2 (ZOOM_X2 - 6)
++#define NATION_BROWSE_Y2 (NATION_BROWSE_Y1 + 220)
+ 
+-#define NATION_SCORE_X1 ZOOM_X1 + 6
+-#define NATION_SCORE_Y1 NATION_BROWSE_Y2 + 6
+-#define NATION_SCORE_X2 ZOOM_X2 - 6
+-#define NATION_SCORE_Y2 NATION_SCORE_Y1 + 150
++#define NATION_SCORE_X1 (ZOOM_X1 + 6)
++#define NATION_SCORE_Y1 (NATION_BROWSE_Y2 + 6)
++#define NATION_SCORE_X2 (ZOOM_X2 - 6)
++#define NATION_SCORE_Y2 (NATION_SCORE_Y1 + 150)
+ 
+-#define NATION_GOAL_X1 ZOOM_X1 + 6
+-#define NATION_GOAL_Y1 NATION_SCORE_Y2 + 6
+-#define NATION_GOAL_X2 ZOOM_X2 - 6
+-#define NATION_GOAL_Y2 NATION_GOAL_Y1 + 110
++#define NATION_GOAL_X1 (ZOOM_X1 + 6)
++#define NATION_GOAL_Y1 (NATION_SCORE_Y2 + 6)
++#define NATION_GOAL_X2 (ZOOM_X2 - 6)
++#define NATION_GOAL_Y2 (NATION_GOAL_Y1 + 110)
+ 
+-#define PLAY_TIME_X1 ZOOM_X1 + 6
+-#define PLAY_TIME_X2 ZOOM_X2 - 6
++#define PLAY_TIME_X1 (ZOOM_X1 + 6)
++#define PLAY_TIME_X2 (ZOOM_X2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_SPY.cpp b/src/OR_SPY.cpp
+index 94ef979..cb91ed7 100644
+--- a/src/OR_SPY.cpp
++++ b/src/OR_SPY.cpp
+@@ -34,10 +34,10 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define SPY_BROWSE_X1 ZOOM_X1 + 6
+-#define SPY_BROWSE_Y1 ZOOM_Y1 + 6
+-#define SPY_BROWSE_X2 ZOOM_X2 - 6
+-#define SPY_BROWSE_Y2 ZOOM_Y2 - 6
++#define SPY_BROWSE_X1 (ZOOM_X1 + 6)
++#define SPY_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define SPY_BROWSE_X2 (ZOOM_X2 - 6)
++#define SPY_BROWSE_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_TECH.cpp b/src/OR_TECH.cpp
+index d9de573..cfd8dcc 100644
+--- a/src/OR_TECH.cpp
++++ b/src/OR_TECH.cpp
+@@ -37,20 +37,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define TECH_BROWSE_X1 ZOOM_X1 + 6
+-#define TECH_BROWSE_Y1 ZOOM_Y1 + 6
+-#define TECH_BROWSE_X2 ZOOM_X2 - 6
+-#define TECH_BROWSE_Y2 TECH_BROWSE_Y1 + 220
++#define TECH_BROWSE_X1 (ZOOM_X1 + 6)
++#define TECH_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define TECH_BROWSE_X2 (ZOOM_X2 - 6)
++#define TECH_BROWSE_Y2 (TECH_BROWSE_Y1 + 220)
+ 
+-#define SCROLL_X1 ZOOM_X1 + 6
+-#define SCROLL_Y1 TECH_BROWSE_Y2 + 6
+-#define SCROLL_X2 ZOOM_X2 - 6
+-#define SCROLL_Y2 SCROLL_Y1 + 80
++#define SCROLL_X1 (ZOOM_X1 + 6)
++#define SCROLL_Y1 (TECH_BROWSE_Y2 + 6)
++#define SCROLL_X2 (ZOOM_X2 - 6)
++#define SCROLL_Y2 (SCROLL_Y1 + 80)
+ 
+-#define GOD_BROWSE_X1 ZOOM_X1 + 6
+-#define GOD_BROWSE_Y1 SCROLL_Y2 + 6
+-#define GOD_BROWSE_X2 ZOOM_X2 - 6
+-#define GOD_BROWSE_Y2 ZOOM_Y2 - 6
++#define GOD_BROWSE_X1 (ZOOM_X1 + 6)
++#define GOD_BROWSE_Y1 (SCROLL_Y2 + 6)
++#define GOD_BROWSE_X2 (ZOOM_X2 - 6)
++#define GOD_BROWSE_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_TOWN.cpp b/src/OR_TOWN.cpp
+index 51fcd89..195883f 100644
+--- a/src/OR_TOWN.cpp
++++ b/src/OR_TOWN.cpp
+@@ -37,20 +37,20 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define TOWN_BROWSE_X1 ZOOM_X1 + 6
+-#define TOWN_BROWSE_Y1 ZOOM_Y1 + 6
+-#define TOWN_BROWSE_X2 ZOOM_X2 - 6
+-#define TOWN_BROWSE_Y2 TOWN_BROWSE_Y1 + 280
++#define TOWN_BROWSE_X1 (ZOOM_X1 + 6)
++#define TOWN_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define TOWN_BROWSE_X2 (ZOOM_X2 - 6)
++#define TOWN_BROWSE_Y2 (TOWN_BROWSE_Y1 + 280)
+ 
+-#define POP_TOTAL_X1 ZOOM_X1 + 6
+-#define POP_TOTAL_Y1 TOWN_BROWSE_Y2 + 2
+-#define POP_TOTAL_X2 ZOOM_X2 - 6
+-#define POP_TOTAL_Y2 POP_TOTAL_Y1 + 18
++#define POP_TOTAL_X1 (ZOOM_X1 + 6)
++#define POP_TOTAL_Y1 (TOWN_BROWSE_Y2 + 2)
++#define POP_TOTAL_X2 (ZOOM_X2 - 6)
++#define POP_TOTAL_Y2 (POP_TOTAL_Y1 + 18)
+ 
+-#define FIRM_BROWSE_X1 ZOOM_X1 + 6
+-#define FIRM_BROWSE_Y1 POP_TOTAL_Y2 + 6
+-#define FIRM_BROWSE_X2 ZOOM_X2 - 6
+-#define FIRM_BROWSE_Y2 ZOOM_Y2 - 6
++#define FIRM_BROWSE_X1 (ZOOM_X1 + 6)
++#define FIRM_BROWSE_Y1 (POP_TOTAL_Y2 + 6)
++#define FIRM_BROWSE_X2 (ZOOM_X2 - 6)
++#define FIRM_BROWSE_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OR_TRADE.cpp b/src/OR_TRADE.cpp
+index 88ed88f..b1d9cc4 100644
+--- a/src/OR_TRADE.cpp
++++ b/src/OR_TRADE.cpp
+@@ -46,21 +46,21 @@
+ 
+ //------------- Define coordinations -----------//
+ 
+-#define CARAVAN_BROWSE_X1 ZOOM_X1 + 6
+-#define CARAVAN_BROWSE_Y1 ZOOM_Y1 + 6
+-#define CARAVAN_BROWSE_X2 ZOOM_X2 - 6
+-#define CARAVAN_BROWSE_Y2 CARAVAN_BROWSE_Y1 + 260
++#define CARAVAN_BROWSE_X1 (ZOOM_X1 + 6)
++#define CARAVAN_BROWSE_Y1 (ZOOM_Y1 + 6)
++#define CARAVAN_BROWSE_X2 (ZOOM_X2 - 6)
++#define CARAVAN_BROWSE_Y2 (CARAVAN_BROWSE_Y1 + 260)
+ 
+-#define REPORT_BUTTON_X1  ZOOM_X1+8
+-#define REPORT_BUTTON_Y1  CARAVAN_BROWSE_Y2+4
++#define REPORT_BUTTON_X1  (ZOOM_X1+8)
++#define REPORT_BUTTON_Y1  (CARAVAN_BROWSE_Y2+4)
+ #define REPORT_BUTTON_WIDTH  90
+-#define REPORT_BUTTON_Y2  REPORT_BUTTON_Y1+20
++#define REPORT_BUTTON_Y2  (REPORT_BUTTON_Y1+20)
+ #define REPORT_BUTTON_X_SPACE  130
+ 
+-#define FIRM_BROWSE_X1 ZOOM_X1 + 6
+-#define FIRM_BROWSE_Y1 CARAVAN_BROWSE_Y2 + 6
+-#define FIRM_BROWSE_X2 ZOOM_X2 - 6
+-#define FIRM_BROWSE_Y2 ZOOM_Y2 - 6
++#define FIRM_BROWSE_X1 (ZOOM_X1 + 6)
++#define FIRM_BROWSE_Y1 (CARAVAN_BROWSE_Y2 + 6)
++#define FIRM_BROWSE_X2 (ZOOM_X2 - 6)
++#define FIRM_BROWSE_Y2 (ZOOM_Y2 - 6)
+ 
+ //----------- Define static variables ----------//
+ 
+diff --git a/src/OTALKRES.cpp b/src/OTALKRES.cpp
+index 037df00..72f826d 100644
+--- a/src/OTALKRES.cpp
++++ b/src/OTALKRES.cpp
+@@ -41,10 +41,10 @@
+ 
+ enum { TALK_LINE_HEIGHT = 18 };
+ 
+-#define TALK_X1 ZOOM_X1 + 16
+-#define TALK_Y1 ZOOM_Y1 + 252
+-#define TALK_X2 ZOOM_X2 - 16
+-#define TALK_Y2 ZOOM_Y2 - 86
++#define TALK_X1 (ZOOM_X1 + 16)
++#define TALK_Y1 (ZOOM_Y1 + 252)
++#define TALK_X2 (ZOOM_X2 - 16)
++#define TALK_Y2 (ZOOM_Y2 - 86)
+ 
+ //------- define constant --------//
+ 
+diff --git a/src/OTOWNIF.cpp b/src/OTOWNIF.cpp
+index 5fd38d4..b2260bb 100644
+--- a/src/OTOWNIF.cpp
++++ b/src/OTOWNIF.cpp
+@@ -53,14 +53,14 @@
+ //------------- Define coordinations -----------//
+ 
+ #define RACE_BROWSE_X1 INFO_X1
+-#define RACE_BROWSE_Y1 INFO_Y1 + 48
++#define RACE_BROWSE_Y1 (INFO_Y1 + 48)
+ #define RACE_BROWSE_X2 INFO_X2
+-#define RACE_BROWSE_Y2 RACE_BROWSE_Y1 + 130
++#define RACE_BROWSE_Y2 (RACE_BROWSE_Y1 + 130)
+ 
+ #define BUTTON_X1 INFO_X1
+-#define BUTTON_Y1 RACE_BROWSE_Y2 + 28
++#define BUTTON_Y1 (RACE_BROWSE_Y2 + 28)
+ #define BUTTON_X2 INFO_X2
+-#define BUTTON_Y2 BUTTON_Y1 + 50
++#define BUTTON_Y2 (BUTTON_Y1 + 50)
+ 
+ //---------- Define constant ------------//
+ 
+diff --git a/src/OTUTOR.cpp b/src/OTUTOR.cpp
+index 4ce4023..16b5b86 100644
+--- a/src/OTUTOR.cpp
++++ b/src/OTUTOR.cpp
+@@ -58,10 +58,10 @@
+ #define TUTOR_X1 ZOOM_X1
+ #define TUTOR_Y1 ZOOM_Y1
+ #define TUTOR_X2 ZOOM_X2
+-#define TUTOR_Y2 TUTOR_Y1 + 120
++#define TUTOR_Y2 (TUTOR_Y1 + 120)
+ 
+-#define TUTOR_BUTTON_X1 TUTOR_X2 - 66
+-#define TUTOR_BUTTON_Y1 TUTOR_Y1 + 20
++#define TUTOR_BUTTON_X1 (TUTOR_X2 - 66)
++#define TUTOR_BUTTON_Y1 (TUTOR_Y1 + 20)
+ 
+ //-------- Define static vars ----------//
+ 
