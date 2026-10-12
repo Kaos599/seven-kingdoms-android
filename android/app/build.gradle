@@ -71,8 +71,9 @@ android {
 
     sourceSets {
         main {
-            // SDL's Java half must match the SDL native version exactly: use the pinned upstream copy.
-            java.srcDirs += ["${rootDir}/../third_party/SDL2/android-project/app/src/main/java"]
+            // SDL's Java half must match the SDL native version exactly: use the pinned upstream copy,
+            // patched into build/sdl-java (patches/sdl) by scripts/apply-patches.sh.
+            java.srcDirs += ["${rootDir}/../build/sdl-java"]
             assets.srcDirs = [stagedAssets]
         }
     }

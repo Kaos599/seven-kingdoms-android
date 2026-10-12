@@ -15,6 +15,7 @@
 #include <string.h>
 #include <SDL.h>
 #include "sk_cheats.h"
+#include "sk_text.h"
 
 // ---------------------------------------------------------------------------------------------
 // Tunables (sizes are fractions of the screen height unless noted)
@@ -49,7 +50,7 @@ static const Uint8 COL_TEXT_DARK[4]  = { 20, 20, 30, 255 };
 // ---------------------------------------------------------------------------------------------
 // Cheat table: one entry per key in Sys::detect_cheat_key (OSYS.cpp:1860-1996)
 // ---------------------------------------------------------------------------------------------
-enum Kind { K_ONESHOT, K_UNDIE, K_FAST };
+enum Kind { K_ONESHOT, K_UNDIE, K_FAST, K_UNIT };   // K_UNIT: applied by sk_cheats_unit_cheat to all selected units
 
 struct CheatDef
 {
@@ -57,21 +58,22 @@ struct CheatDef
 	const char *line2;     // for toggles this is the stem; " ON"/" OFF" is appended
 	SDL_Keycode key;
 	Kind kind;
+	int unit_which;        // K_UNIT only: argument of sk_cheats_unit_cheat
 };
 
 static const CheatDef CHEATS[CHEAT_COUNT] = {
-	{ "CASH",     "+1000",      SDLK_c,            K_ONESHOT },  // 'c'  add_cheat(1000)
-	{ "FOOD",     "+1000",      SDLK_BACKSLASH,    K_ONESHOT },  // '\'  add_food(1000)
-	{ "ALL TECH", "AND GODS",   SDLK_n,            K_ONESHOT },  // 'n'
-	{ "REVEAL",   "MAP",        SDLK_SLASH,        K_ONESHOT },  // '/'
-	{ "TOWN",     "POP +10",    SDLK_SEMICOLON,    K_ONESHOT },  // ';'  needs a selected town
-	{ "IMMORTAL", "KING",       SDLK_u,            K_UNDIE },    // 'u'  toggle
-	{ "PRAYER",   "MAX",        SDLK_EQUALS,       K_ONESHOT },  // '='  needs a selected Seat of Power base
-	{ "FIRM",     "FULL HP",    SDLK_MINUS,        K_ONESHOT },  // '-'  needs a selected firm
-	{ "FAST",     "BUILD",      SDLK_z,            K_FAST },     // 'z'  toggle
-	{ "COMBAT",   "+20",        SDLK_LEFTBRACKET,  K_ONESHOT },  // '['  needs a selected unit
-	{ "SKILL",    "+20",        SDLK_RIGHTBRACKET, K_ONESHOT },  // ']'  needs a selected unit
-	{ "SPY",      "SKILL +20",  SDLK_QUOTE,        K_ONESHOT },  // '\'' needs a selected spy unit
+	{ "CASH",     "+1000",      SDLK_c,            K_ONESHOT, 0 },  // 'c'  add_cheat(1000)
+	{ "FOOD",     "+1000",      SDLK_BACKSLASH,    K_ONESHOT, 0 },  // '\'  add_food(1000)
+	{ "ALL TECH", "AND GODS",   SDLK_n,            K_ONESHOT, 0 },  // 'n'
+	{ "REVEAL",   "MAP",        SDLK_SLASH,        K_ONESHOT, 0 },  // '/'
+	{ "TOWN",     "POP +10",    SDLK_SEMICOLON,    K_ONESHOT, 0 },  // ';'  needs a selected town
+	{ "IMMORTAL", "KING",       SDLK_u,            K_UNDIE, 0 },    // 'u'  toggle
+	{ "PRAYER",   "MAX",        SDLK_EQUALS,       K_ONESHOT, 0 },  // '='  needs a selected Seat of Power base
+	{ "FIRM",     "FULL HP",    SDLK_MINUS,        K_ONESHOT, 0 },  // '-'  needs a selected firm
+	{ "FAST",     "BUILD",      SDLK_z,            K_FAST, 0 },     // 'z'  toggle
+	{ "COMBAT",   "+20",        SDLK_LEFTBRACKET,  K_UNIT, 0 },     // '['  every selected own unit (OSYS.cpp detect_cheat_key)
+	{ "SKILL",    "+20",        SDLK_RIGHTBRACKET, K_UNIT, 1 },     // ']'  every selected own unit
+	{ "SPY",      "SKILL +20",  SDLK_QUOTE,        K_UNIT, 2 },     // '\'' every selected own spy
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -95,6 +97,7 @@ static SDL_FingerID g_press_id = 0;
 static bool   g_pressing = false;
 
 static int    g_flash_idx = -1;
+static int    g_flash_count = -1;   // K_UNIT: units changed by the last press
 static Uint32 g_flash_at = 0;
 
 // ---------------------------------------------------------------------------------------------
@@ -217,6 +220,7 @@ void sk_cheats_reset_touch(void) { g_pressing = false; }
 
 void sk_cheats_update(SDL_Window *window)
 {
+	sk_text_update();   // per-frame hook for the text-field keyboard (sk_text.cpp); sk_touch.cpp is not ours to edit
 	refresh_state();
 	Uint32 now = SDL_GetTicks();
 
@@ -295,6 +299,13 @@ static void activate(int idx)
 	int i = idx - 1;
 	if (!buttons_enabled())
 		return;
+	if (CHEATS[i].kind == K_UNIT)
+	{
+		g_flash_count = sk_cheats_unit_cheat(CHEATS[i].unit_which);
+		g_flash_idx = idx;
+		g_flash_at = SDL_GetTicks();
+		return;
+	}
 	enqueue(CHEATS[i].key, false);
 	if (CHEATS[i].kind == K_ONESHOT)
 	{
@@ -545,7 +556,14 @@ void sk_cheats_draw(SDL_Renderer *r, const SkCheatsView *v)
 		frame(r, L.btn[i], edge);
 
 		char l2[24];
-		if (c.kind == K_ONESHOT)
+		if (c.kind == K_UNIT && flash)
+		{
+			if (g_flash_count > 0)
+				SDL_snprintf(l2, sizeof(l2), "%d %s", g_flash_count, g_flash_count == 1 ? "UNIT" : "UNITS");
+			else
+				SDL_snprintf(l2, sizeof(l2), "NO UNIT");
+		}
+		else if (c.kind == K_ONESHOT || c.kind == K_UNIT)
 			SDL_snprintf(l2, sizeof(l2), "%s", flash ? "SENT" : c.line2);
 		else
 			SDL_snprintf(l2, sizeof(l2), "%s %s", c.line2, on ? "ON" : "OFF");

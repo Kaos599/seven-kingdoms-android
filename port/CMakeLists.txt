@@ -79,7 +79,9 @@ set(PORT_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_android_video.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_glob.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_touch.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_camera.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_cheats.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/android/sk_text.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/android/sk_lifecycle.cpp"
 )
 
