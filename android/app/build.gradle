@@ -3,6 +3,11 @@ apply plugin: 'com.android.application'
 // Directory filled by scripts/build.sh (game data + music + manifest.txt + data_version.txt).
 def stagedAssets = file("${rootDir}/../build/assets")
 
+// Side-by-side build (scripts/build.sh --side-by-side, i.e. -PsideBySide): its own application ID (.hd
+// suffix) and label, so it installs next to the released app without sharing its data. Default builds are
+// unchanged. The label is overridden with resValue, so res/values/strings.xml is not duplicated.
+def sideBySide = project.hasProperty("sideBySide")
+
 // Release signing (CONTRACT 3.7): the keystore and its passwords live outside the repo.
 // scripts/build.sh release creates both if missing. Nothing secret is read from the repo.
 def releaseKeystore = new File(System.getProperty("user.home"), ".android/7kaa-release.jks")
@@ -24,6 +29,10 @@ android {
         targetSdk 36
         versionCode 1
         versionName "2.15.7-android1"
+        if (sideBySide) {
+            applicationIdSuffix ".hd"
+            resValue "string", "app_name", "Seven Kingdoms HD"
+        }
         externalNativeBuild {
             cmake {
                 arguments "-DANDROID_STL=c++_static",
