@@ -31,17 +31,22 @@ where you touch.
 
 | Gesture | Action |
 |---|---|
-| Tap | Select / click |
-| Long-press (hold about 0.4 s; a ring grows) | Right click: move, attack, assign |
+| Tap | Select. With your units selected, a tap gives the order the game would give for a right click there: move, attack, station in a building, settle in a town, board a ship. Tapping one of your own units still selects it |
+| Long-press, then lift (a ring grows, then holds) | The opposite of a tap: select the building a tap would have sent your units into, or give an order where a tap would select |
+| Long-press, then drag | Box-select units |
+| One-finger drag on the map | Move around the map (it follows your finger; flick to glide) |
+| Pinch / spread on the map | Zoom between 1× and 2× |
 | Two-finger tap | Right click at the midpoint |
-| One-finger drag | Box-select units |
-| Two-finger drag | Scroll the map |
 | Back | In-game menu (Esc) |
+
+On-screen keyboard: tapping a name field (new game, save game) opens the phone's keyboard; Enter closes it.
 
 **Toolbar.** The game is 4:3, so on a phone it has black bars on both sides. The right-hand bar holds
 buttons for keys that have no mouse equivalent: **Pause**, **Slower**, **Faster**, **K** (jump to your
-king), **G** (jump to your general) and **D** (open the oldest diplomatic message). On a 4:3 tablet the
-toolbar is a strip that opens from a handle in the top-left corner.
+king), **G** (jump to your general), **D** (open the oldest diplomatic message), **X** (deselect), the
+magnifier (reset zoom) and **1** to **5** (control groups: tap to select the group, hold to save the current
+selection as that group). On a 4:3 tablet the toolbar is a strip that opens from a handle in the top-left
+corner; in the widescreen build it opens from a handle in the top bar.
 
 **Cheats.** Tap **C** on the toolbar to open the cheats panel in the left-hand bar. Switch **Cheats ON**
 (it types the game's own Shift + `111 222 333` code, then tap away the game's "Cheat Mode Enabled" message)
@@ -57,7 +62,7 @@ and the buttons unlock:
 | TOWN POP +10 | Ten more people in the selected town |
 | PRAYER MAX | Fill the selected Seat of Power |
 | FIRM FULL HP | Selected building to full hit points |
-| COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the selected unit's combat, skill or spying level |
+| COMBAT +20 / SKILL +20 / SPY SKILL +20 | Raise the combat, skill or spying level of every selected unit of yours (up to 100) |
 
 These are exactly the cheats built into the game (full reference: [docs/CHEATS.md](docs/CHEATS.md)). They
 work in single player only, and the game marks a cheated game "(Cheated)" on its final score. Switching
@@ -117,7 +122,10 @@ with a different key cannot update an installed copy.
 | `patches/7kaa/0004` | Touch input layer and toolbar (`port/android/sk_touch.cpp`) |
 | `patches/7kaa/0005` | Pause game and audio in the background (`port/android/sk_lifecycle.cpp`) |
 | `patches/7kaa/0006` | Hide the game's software cursor |
-| `patches/7kaa/0008` | Cheats panel game-state hook (`port/android/sk_cheats.cpp`) |
+| `patches/7kaa/0008` | Cheats panel game-state hook and multi-unit cheats (`port/android/sk_cheats.cpp`) |
+| `patches/7kaa/0009` | Phone keyboard for the game's text fields (`port/android/sk_text.cpp`) |
+| `patches/7kaa/0010` | Map camera: drag to pan, pinch to zoom, minimap box (`port/android/sk_camera.cpp`) |
+| `patches/7kaa/0011` | Smart tap (asks the game's own cursor logic whether a tap is an order), toolbar group and deselect actions |
 | `port/CMakeLists.txt` | Builds SDL2, openal-soft (OpenSL ES backend), enet and the game as `libmain.so` |
 | `android/` | Gradle project, activity (fullscreen, keep screen on), Licences screen |
 
